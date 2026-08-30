@@ -32,20 +32,26 @@
   "hotPaths": [
     {
       "path": "server/app.js",
-      "accessCount": 17,
-      "lastAccessed": 1788088165061,
+      "accessCount": 22,
+      "lastAccessed": 1788089125271,
       "type": "file"
     },
     {
       "path": "shared/contracts.js",
-      "accessCount": 11,
-      "lastAccessed": 1788088169065,
+      "accessCount": 12,
+      "lastAccessed": 1788088453515,
       "type": "file"
     },
     {
       "path": "server/store.js",
-      "accessCount": 9,
-      "lastAccessed": 1788088178614,
+      "accessCount": 12,
+      "lastAccessed": 1788089190626,
+      "type": "file"
+    },
+    {
+      "path": "server/index.js",
+      "accessCount": 10,
+      "lastAccessed": 1788089125806,
       "type": "file"
     },
     {
@@ -74,14 +80,20 @@
     },
     {
       "path": "test/store.test.js",
-      "accessCount": 6,
-      "lastAccessed": 1788086681328,
+      "accessCount": 7,
+      "lastAccessed": 1788088706314,
       "type": "file"
     },
     {
       "path": "test/http.test.js",
+      "accessCount": 7,
+      "lastAccessed": 1788088706542,
+      "type": "file"
+    },
+    {
+      "path": "shared/ids.js",
       "accessCount": 6,
-      "lastAccessed": 1788087722171,
+      "lastAccessed": 1788089190857,
       "type": "file"
     },
     {
@@ -91,15 +103,21 @@
       "type": "file"
     },
     {
-      "path": "server/index.js",
-      "accessCount": 5,
-      "lastAccessed": 1788088170329,
-      "type": "file"
-    },
-    {
       "path": "test/approvals.test.js",
       "accessCount": 5,
       "lastAccessed": 1788088174858,
+      "type": "file"
+    },
+    {
+      "path": "shared/reminders.js",
+      "accessCount": 5,
+      "lastAccessed": 1788089126274,
+      "type": "file"
+    },
+    {
+      "path": "shared/consumer.js",
+      "accessCount": 5,
+      "lastAccessed": 1788089202879,
       "type": "file"
     },
     {
@@ -115,9 +133,9 @@
       "type": "file"
     },
     {
-      "path": "shared/ids.js",
+      "path": "test/approval-flow.test.js",
       "accessCount": 4,
-      "lastAccessed": 1788087455829,
+      "lastAccessed": 1788088705927,
       "type": "file"
     },
     {
@@ -133,9 +151,33 @@
       "type": "file"
     },
     {
-      "path": "test/approval-flow.test.js",
+      "path": "shared/approvals.js",
       "accessCount": 3,
-      "lastAccessed": 1788088174832,
+      "lastAccessed": 1788088448206,
+      "type": "file"
+    },
+    {
+      "path": "test/mail.test.js",
+      "accessCount": 3,
+      "lastAccessed": 1788089099149,
+      "type": "file"
+    },
+    {
+      "path": "test/consumer.test.js",
+      "accessCount": 3,
+      "lastAccessed": 1788089119195,
+      "type": "file"
+    },
+    {
+      "path": "test/reminder-api.test.js",
+      "accessCount": 3,
+      "lastAccessed": 1788089126098,
+      "type": "file"
+    },
+    {
+      "path": "shared/mail.js",
+      "accessCount": 3,
+      "lastAccessed": 1788089126685,
       "type": "file"
     },
     {
@@ -187,9 +229,9 @@
       "type": "file"
     },
     {
-      "path": "shared/approvals.js",
+      "path": "test/reminders.test.js",
       "accessCount": 2,
-      "lastAccessed": 1788088164779,
+      "lastAccessed": 1788088834358,
       "type": "file"
     },
     {

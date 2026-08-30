@@ -6,6 +6,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createContract, validateContract, applyUpdate, transition } from '../shared/contracts.js';
 import { openChain, resolveStep, resolveContractStatus, currentStep } from '../shared/approvals.js';
+import { computeDueReminders } from '../shared/reminders.js';
+import { renderTemplate } from '../shared/mail.js';
+import { buildVars, nextMailState, MAX_RETRY } from '../shared/consumer.js';
 import { newId } from '../shared/ids.js';
 
 // legal = 只读 + 仅 2 级链复核（read 档，不获建/改/提交权；审批动作按步骤角色精确判定）。
@@ -76,7 +79,7 @@ async function openChainFor(approvals, contractId) {
   return pending[0] ?? null;
 }
 
-export function createApp({ store, counterparties = [], approvals = null, outbox = null, staticDir = null }) {
+export function createApp({ store, counterparties = [], approvals = null, outbox = null, mails = null, staticDir = null }) {
   return createServer(async (req, res) => {
     try {
       const { pathname } = new URL(req.url, 'http://x');
@@ -233,6 +236,68 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
         res.writeHead(204); // 204 不允许携带 body
         return res.end();
       }
+    }
+
+    // —— 到期提醒只读视图（无副作用）+ outbox 消费视图 + 外部触发消费（F3/frontier）——
+    if (pathname === '/api/reminders/due' && req.method === 'GET') {
+      if (!requireLevel(res, req, 0)) return;
+      return sendJson(res, 200, computeDueReminders(await store.list(), new Date()));
+    }
+
+    if (pathname === '/api/outbox' && req.method === 'GET') {
+      if (!requireLevel(res, req, 0)) return;
+      const events = outbox ? await outbox.list() : [];
+      const grouped = { pending: [], sent: [], failed: [] };
+      for (const e of events) {
+        const s = e.status ?? 'pending';
+        (grouped[s] !== undefined ? grouped[s] : grouped.pending).push(e);
+      }
+      return sendJson(res, 200, grouped);
+    }
+
+    if (pathname === '/api/outbox/consume' && req.method === 'POST') {
+      const a = requireLevel(res, req, 1); // editor/admin 触发；viewer/legal → 403
+      if (!a) return;
+      if (!outbox || !mails) {
+        return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '通知存储未接线' });
+      }
+      const now = new Date();
+      // 1) 扫到期提醒：已发送队列 id（= sent_key）为去重源，纯扫描结果交发送侧落盘
+      const sentKeys = new Set((await mails.list()).map((m) => m.id));
+      const due = computeDueReminders(await store.list(), now, sentKeys);
+      let mailsWritten = 0;
+      for (const r of due) {
+        if (await mails.get(r.sent_key)) continue; // 去重，幂等
+        const contract = await store.get(r.contract_id);
+        const vars = buildVars({ type: 'reminder.due', payload: { due_date: r.due_date, days_left: r.days_left, tier: r.tier } }, contract);
+        const mail = renderTemplate('reminder.due', vars);
+        await mails.create({ id: r.sent_key, type: 'reminder.due', contract_id: r.contract_id, recipient_hint: '', subject: mail.subject, body: mail.body, sent_at: now.toISOString() });
+        mailsWritten++;
+      }
+      // 2) 消费 outbox pending；failed 且未达退避上限则再试
+      for (const evt of await outbox.list()) {
+        const status = evt.status ?? 'pending';
+        if (status === 'sent') continue;
+        if (status === 'failed' && (evt.retry_count ?? 0) >= MAX_RETRY) continue;
+        const contract = await store.get(evt.contract_id);
+        let mail = null;
+        let ok = true;
+        let err = null;
+        try { mail = renderTemplate(evt.type, buildVars(evt, contract)); } catch (e) { ok = false; err = e.message; }
+        const next = nextMailState(evt, ok);
+        if (ok && !(await mails.get(evt.id))) {
+          await mails.create({ id: evt.id, type: evt.type, contract_id: evt.contract_id, recipient_hint: '', subject: mail.subject, body: mail.body, sent_at: now.toISOString() });
+          mailsWritten++;
+        }
+        await outbox.update(evt.id, (cur) => ({
+          ...cur, status: next.status, retry_count: next.retry_count,
+          rendered: ok ? { subject: mail.subject, body: mail.body } : cur.rendered,
+          error: ok ? undefined : err ?? cur.error,
+        }));
+      }
+      const grouped = { pending: 0, sent: 0, failed: 0 };
+      for (const e of await outbox.list()) { const s = e.status ?? 'pending'; if (grouped[s] !== undefined) grouped[s]++; }
+      return sendJson(res, 200, { reminders_scanned: due.length, mails_written: mailsWritten, outbox: grouped });
     }
 
     sendJson(res, 404, null, { code: 'NOT_FOUND', message: `无此接口 ${req.method} ${pathname}` });
