@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "findings": [
+    {
+      "id": "CF-001",
+      "title": "C4 预授权消除执行中中断",
+      "category": "protocol",
+      "phase": "execute",
+      "detail": "Run A 的涌现决策（版本链格式/superseded 布尔/评级枚举）按 brief C4 预授权随文落盘，零中断——预授权模式有效",
+      "status": "confirmed"
+    },
+    {
+      "id": "CF-002",
+      "title": "拆票代理主动标注共享文件面并建议串行",
+      "category": "protocol",
+      "phase": "spec",
+      "detail": "02/04 共用 server/app.js 被拆票代理识别并给串行建议——F-0005 生态进化",
+      "status": "confirmed"
+    },
+    {
+      "id": "CF-003",
+      "title": "单会话直通 Phase 0-5 在大型 run 会探索耗尽容量",
+      "category": "protocol",
+      "phase": "execute",
+      "detail": "Run A 首次尝试直通，spec/tickets 均未产出。修正：分段模式（Phase 2+3 一轮 → Phase 4 按依赖图分段）。已写回 launch 协议",
+      "status": "fixed"
+    },
+    {
+      "id": "CF-004",
+      "title": "审计/旁路持久化写必须 fail-close 或 catch，绝不悬空 promise",
+      "category": "correctness",
+      "phase": "execute",
+      "detail": "Run B T3 首次实现 withAudit/auditEvent 的 append 为 fire-and-forget 悬空 promise：盘故障 → unhandled rejection 崩进程 + 无声丢审计（业务已提交）。B 格 reviewer 以 BLOCK 拦下。修复：withAudit 内 await append（写路径 fail-close → 请求 5xx、诚实报错）；认证事件 .catch(console.error) 可观测不阻断。教训：所有副作用写（审计/event/存储）要么 await 进请求语义、要么显式 catch + 观测，二选一，绝不丢弃。已沉淀为 ADR-0004 权衡节",
+      "status": "fixed"
+    },
+    {
+      "id": "CF-005",
+      "title": "mock 头→原子 token 迁移时，“缺字段/字段非法”测试用例塌缩为“缺/坏 token”",
+      "category": "testing",
+      "phase": "execute",
+      "detail": "identity 从两个 mock 头（X-User-Role + X-User-Id）迁到 Bearer token 后，'unknown role' 与 'missing/malformed id' 在会话世界里无对应（角色与 id 原子在 token 内，token 非法即整体失效）。原 '未知角色→401'、'缺 id 提交→401' 用例改写为无 Bearer / 坏 token→401。教训：认证 seam 替换时，'字段缺失'与'字段值非法'两类用例在原子凭据下合并为'凭据缺失/凭据非法'，语义不变但断言面收窄",
+      "status": "confirmed"
+    },
+    {
+      "id": "CF-006",
+      "title": "前端 review 借新代码路径暴露 Run A 既有死 bug（amendments 未声明）",
+      "category": "correctness",
+      "phase": "execute",
+      "detail": "Run A 引入 refreshAmendments 写未声明的 amendments，每次调用 ReferenceError——冒烟按正则断言从不执行模块，未触发。Run B T5 的 doLogin 新路径调它并静默吞掉失败，B 格 reviewer 指出后一行修复。教训：前端静态断言（grep app.js 文本）测不到运行时崩溃；改到某功能的新入口时，应执行一次真实模块路径，而非只比字符串。已写进 amendments 声明注释",
+      "status": "fixed"
+    }
+  ]
+}

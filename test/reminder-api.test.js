@@ -7,6 +7,7 @@ import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { createFileStore } from '../server/store.js';
 import { newContractId } from '../shared/ids.js';
+import { bootSessions, authClient } from './_session-helpers.js';
 
 const nowISO = () => new Date().toISOString();
 const dateFromToday = (offsetDays) => {
@@ -21,8 +22,9 @@ async function setup(t) {
   const approvals = await createFileStore(path.join(dir, 'approvals.json'));
   const outbox = await createFileStore(path.join(dir, 'outbox.json'));
   const mails = await createFileStore(path.join(dir, 'mails.json'));
+  const sessions = await bootSessions(dir);
   const server = createApp({
-    store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], approvals, outbox, mails, staticDir: null,
+    store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], approvals, outbox, mails, sessions, staticDir: null,
   });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -33,14 +35,10 @@ async function setup(t) {
   return { base, store, approvals, outbox, mails };
 }
 
+const _clients = new Map();
 async function req(base, method, p, role, id, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (role) headers['X-User-Role'] = role;
-  if (id) headers['X-User-Id'] = id;
-  const r = await fetch(base + p, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  let json = null;
-  try { json = await r.json(); } catch { /* 204 等无 body */ }
-  return { status: r.status, json };
+  if (!_clients.has(base)) _clients.set(base, await authClient(base));
+  return (await _clients.get(base)).reqJson(method, p, role, body); // id 已废弃（会话身份）
 }
 const consume = (b, role = 'editor', id = 'u_1') => req(b, 'POST', '/api/outbox/consume', role, id);
 const due = (b, role = 'viewer', id = 'u_a') => req(b, 'GET', '/api/reminders/due', role, id);
@@ -150,7 +148,8 @@ test('US-E6 权限：viewer consume → 403；无身份头 GET /due → 401', as
 test('US-E6 错误信封统一：consume 未接线存储 → 404 / 未知路径 → 404', async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-nomail-'));
   const store = await createFileStore(path.join(dir, 'contracts.json'));
-  const server = createApp({ store, counterparties: [], staticDir: null }); // 无 outbox/mails
+  const sessions = await bootSessions(dir);
+  const server = createApp({ store, counterparties: [], sessions, staticDir: null }); // 无 outbox/mails
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => {

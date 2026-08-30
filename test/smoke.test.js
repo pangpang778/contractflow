@@ -7,17 +7,25 @@ import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../server/app.js';
 import { createFileStore } from '../server/store.js';
+import { bootSessions, authClient } from './_session-helpers.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CLIENT = path.join(ROOT, 'client');
 
+const _clients = new Map();
+async function get(base, p, role = 'editor') {
+  if (!_clients.has(base)) _clients.set(base, await authClient(base));
+  return (await _clients.get(base)).raw('GET', p, role);
+}
+
 async function setup(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-smoke-'));
   const store = await createFileStore(path.join(dir, 'contracts.json'));
+  const sessions = await bootSessions(dir);
   const server = createApp({
     store,
     counterparties: [{ id: 'cp_1', name: '示例供应商' }],
-    staticDir: CLIENT,
+    sessions, staticDir: CLIENT,
   });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -26,10 +34,6 @@ async function setup(t) {
     await fs.rm(dir, { recursive: true, force: true });
   });
   return { base };
-}
-
-function get(base, p) {
-  return fetch(base + p, { headers: { 'X-User-Role': 'editor' } });
 }
 
 test('S3 静态可达：/ 返回含挂载点的 HTML', async (t) => {
@@ -51,23 +55,30 @@ test('S3 静态资源 200：tokens.css 含状态变量、app.js/app.css 可达',
   assert.equal((await get(base, '/app.css')).status, 200);
 });
 
-test('S4 审批前端：入口含审批面板钩子、legal 身份、mock 用户 id', async (t) => {
+test('S4 审批前端：入口含审批面板钩子 + 登录表单 + session Bearer 脚本，未登录→登录视图', async (t) => {
   const { base } = await setup(t);
   const html = await (await get(base, '/')).text();
-  assert.match(html, /id="approval-panel"/);
-  assert.match(html, /id="submit-approval"/);
-  assert.match(html, /id="approval-action"/);
-  assert.match(html, /value="legal">/);
-  assert.match(html, /id="userid"/);
+  for (const id of ['approval-panel', 'submit-approval', 'approval-action', 'login-form']) {
+    assert.match(html, new RegExp(`id="${id}"`), `HTML 应含挂载点 ${id}`);
+  }
+  assert.match(html, /name="username"/);
+  assert.match(html, /name="password"/);
+  assert.match(html, /id="app" hidden/, '未登录默认隐藏工作台 → 登录视图');
+  assert.ok(!/id="role"|id="userid"/.test(html), 'HTML 不再含 mock 角色下拉/用户 id 输入');
   const js = await (await get(base, '/app.js')).text();
-  assert.match(js, /X-User-Id/);
+  assert.match(js, /localStorage/);
+  assert.match(js, /Authorization: `Bearer/);
+  assert.match(js, /\/api\/auth\/login/);
+  assert.match(js, /\/api\/auth\/logout/);
+  assert.match(js, /status === 401/, '401 → 清 token 回登录');
+  assert.ok(!/X-User-Id|X-User-Role/.test(js), '不再用 mock 身份头');
   assert.match(js, /\/approval/);
 });
 
 test('S3 路径遍历不泄露外部文件：越界 URL 不返回 server 源码', async (t) => {
   const { base } = await setup(t);
   for (const p of ['/../server/app.js', '/..%2f..%2fserver/store.js', '/%2e%2e/server/index.js']) {
-    const r = await fetch(base + p, { headers: { 'X-User-Role': 'editor' } });
+    const r = await fetch(base + p);
     assert.notEqual(r.status, 200, `不应 200: ${p}`);
     const txt = await r.text().catch(() => '');
     assert.ok(!/createServer|createFileStore/i.test(txt), `不应泄露 server 源码: ${p}`);
@@ -109,18 +120,14 @@ test('S3 遍历防护经裸 socket 命中：静态面绝不泄露 staticDir 外�
 
 test('S3 挂载渲染的数据链路：API round-trip 落到列表', async (t) => {
   const { base } = await setup(t);
-  const body = JSON.stringify({
+  const client = await authClient(base);
+  const created = await client.raw('POST', '/api/contracts', 'editor', {
     title: '冒烟合同',
     counterparty_id: 'cp_1',
     amount: 123456,
     currency: 'CNY',
     start_date: '2026-09-01',
     end_date: '2027-09-01',
-  });
-  const created = await fetch(`${base}/api/contracts`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-User-Role': 'editor' },
-    body,
   });
   assert.equal(created.status, 201);
 
@@ -140,7 +147,8 @@ test('T6 静态挂载：两域 UI 挂载点 + 变更单对照 + 相对方管理 
   const js = await (await get(base, '/app.js')).text();
   assert.match(js, /\/api\/amendments/);
   assert.match(js, /\/api\/counterparties/);
-  assert.match(js, /X-User-Id/);
+  assert.match(js, /Authorization: `Bearer/, '写操作带会话 Bearer');
+  assert.ok(!/X-User-Id|X-User-Role/.test(js), '不再用 mock 身份头');
   const css = await (await get(base, '/app.css')).text();
   assert.match(css, /\[data-role="viewer"\]/, 'viewer 只读应隐藏写表单');
 });
@@ -149,13 +157,14 @@ test('T6 全链路冒烟（F-0005 收敛）：active → 变更单提交/审批/
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-f005-'));
   const store = await createFileStore(path.join(dir, 'contracts.json'));
   const amendments = await createFileStore(path.join(dir, 'amendments.json'));
-  const server = createApp({ store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], amendments, staticDir: CLIENT });
+  const sessions = await bootSessions(dir);
+  const server = createApp({ store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], amendments, sessions, staticDir: CLIENT });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => { await new Promise((r) => server.close(r)); await fs.rm(dir, { recursive: true, force: true }); });
 
-  const h = (role, id = 'u_1') => ({ 'Content-Type': 'application/json', 'X-User-Role': role, 'X-User-Id': id });
-  const post = async (p, role, body, userId = 'u_1') => fetch(base + p, { method: 'POST', headers: h(role, userId), body: JSON.stringify(body) });
+  const client = await authClient(base);
+  const post = async (p, role, body) => client.raw('POST', p, role, body);
   const c = await post('/api/contracts', 'editor', { title: 'F合约', counterparty_id: 'cp_1', amount: 1000, currency: 'CNY', start_date: '2026-01-01', end_date: '2026-12-31' });
   assert.equal(c.status, 201);
   const cid = (await c.json()).data.id;
@@ -164,11 +173,11 @@ test('T6 全链路冒烟（F-0005 收敛）：active → 变更单提交/审批/
   assert.equal(am.status, 201);
   const amid = (await am.json()).data.id;
   assert.equal((await post(`/api/amendments/${amid}/submit`, 'editor')).status, 200);
-  assert.equal((await post(`/api/amendments/${amid}/approve`, 'admin', { comment: 'ok' }, 'u_9')).status, 200); // 审批人 u_9 ≠ 提交人 u_1
-  const apply = await post(`/api/amendments/${amid}/apply`, 'admin', undefined, 'u_9');
+  assert.equal((await post(`/api/amendments/${amid}/approve`, 'admin', { comment: 'ok' })).status, 200); // 会话下提交人=editor、审批人=admin，非同一人
+  const apply = await post(`/api/amendments/${amid}/apply`, 'admin', undefined);
   assert.equal(apply.status, 200);
   const succ = (await apply.json()).data;
   assert.equal(succ.version, 2);
-  const list = await (await fetch(base + '/api/contracts', { headers: h('viewer') })).json();
+  const list = await (await client.raw('GET', '/api/contracts', 'viewer')).json();
   assert.deepEqual(list.data.map((x) => x.id), [succ.id], '列表默认只含继任，父合同隐去');
 });

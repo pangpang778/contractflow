@@ -2,23 +2,77 @@
 // 状态迁移合法性/角色权限由服务端判定（服务端强校验，不信前端）。
 
 const STATUSES = ['draft', 'in_review', 'pending_sign', 'active', 'archived', 'void', 'expired'];
+const SESSION_KEY = 'cf-session'; // localStorage: {token, role, id, expires_at}
 const $ = (id) => document.getElementById(id);
 
-let role = 'editor';
-let userId = 'u_1';
+let role = '';
+let userId = '';
+let token = '';
 let counterparties = [];
+let amendments = []; // 变更单列表（Run B 修复：先前缺失声明 → refreshAmendments 每次 ReferenceError）
 let selected = null;
 let cpEditingId = null; // 相对方编辑态（null=新建）
 let amSelectedId = null; // 当前打开的变更单
 
+const readSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || null; } catch { return null; } };
+const saveSession = (s) => localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+const clearSession = () => localStorage.removeItem(SESSION_KEY);
+
+function showWorkbench() {
+  const s = readSession();
+  $('login-view').hidden = true;
+  $('app').hidden = false;
+  $('session-box').hidden = false;
+  $('session-role').textContent = `${s && s.role ? s.role : ''} · ${s && s.id ? s.id : ''}`;
+  document.body.dataset.role = role; // CSS 按角色隐隐藏（只读），服务端仍 403 兜底
+}
+function showLogin() {
+  $('app').hidden = true;
+  $('session-box').hidden = true;
+  $('login-view').hidden = false;
+  delete document.body.dataset.role;
+}
+
 async function api(path, { method = 'GET', body } = {}) {
-  const opts = { method, headers: { 'X-User-Role': role, 'X-User-Id': userId } };
+  const opts = { method, headers: { Authorization: `Bearer ${token}` } };
   if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
   const r = await fetch(path, opts);
+  if (r.status === 401) { clearSession(); token = ''; role = ''; userId = ''; showLogin(); throw new Error('登录已失效，请重新登录'); }
   let json = null;
   try { json = await r.json(); } catch { /* 204 无 body */ }
   if (!r.ok) throw new Error((json && json.error && json.error.message) || `${r.status}`);
-  return json.data;
+  return json ? json.data : null; // 204 无 body → null
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const loginErr = $('login-error');
+  loginErr.hidden = true;
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: f.get('username'), password: f.get('password') }),
+    });
+    const json = await r.json().catch(() => null);
+    if (!r.ok) throw new Error((json && json.error && json.error.message) || `登录失败（${r.status}）`);
+    const d = json.data;
+    saveSession({ token: d.token, role: d.role, id: d.id, expires_at: d.expires_at });
+    token = d.token; role = d.role; userId = d.id;
+    showWorkbench();
+    await Promise.all([loadCounterparties(), refreshList(), refreshAmendments()]);
+  } catch (err) {
+    loginErr.textContent = err.message;
+    loginErr.hidden = false;
+  }
+}
+
+async function doLogout() {
+  try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* 会话失效也照常本地清理 */ }
+  clearSession();
+  token = ''; role = ''; userId = '';
+  showLogin();
 }
 
 const money = (cents) => (cents / 100).toFixed(2);
@@ -85,12 +139,6 @@ async function loadApproval() {
   const action = $('approval-action');
   const canAct = !!step && role === step.role && !!chain && chain.submitter_id !== userId;
   action.hidden = !canAct;
-}
-
-function applyIdentity() {
-  document.body.dataset.role = role; // CSS 按角色隐隐藏（只读），服务端仍 403 兜底
-  refreshList().catch((e) => flash(e.message));
-  if (selected) loadDetail(selected.id).catch((e) => flash(e.message));
 }
 
 async function loadCounterparties() {
@@ -228,8 +276,8 @@ async function amAction(action) {
 }
 
 async function init() {
-  $('role').addEventListener('change', (e) => { role = e.target.value; applyIdentity(); });
-  $('userid').addEventListener('change', (e) => { userId = e.target.value.trim() || userId; applyIdentity(); });
+  $('login-form').addEventListener('submit', doLogin);
+  $('logout').addEventListener('click', doLogout);
   $('refresh').addEventListener('click', () => refreshList().catch((e) => flash(e.message)));
   $('close-detail').addEventListener('click', () => { $('detail-panel').hidden = true; selected = null; });
 
@@ -302,9 +350,16 @@ async function init() {
   $('am-reject').addEventListener('click', () => amAction('reject'));
   $('am-apply').addEventListener('click', () => amAction('apply'));
 
-  await loadCounterparties();
-  await refreshList();
-  await refreshAmendments();
+  const s = readSession();
+  if (s && s.token) {
+    token = s.token; role = s.role; userId = s.id;
+    showWorkbench();
+    await loadCounterparties();
+    await refreshList();
+    await refreshAmendments();
+  } else {
+    showLogin();
+  }
 }
 
 init().catch((e) => flash(e.message));

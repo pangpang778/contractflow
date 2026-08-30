@@ -10,22 +10,26 @@
 <body>
   <header class="topbar">
     <h1 class="brand">合同工作台</h1>
-    <label class="role-picker">
-      身份（mock）
-      <select id="role">
-        <option value="viewer">viewer·只读</option>
-        <option value="editor" selected>editor·编辑</option>
-        <option value="legal">legal·法务复核</option>
-        <option value="admin">admin·管理员</option>
-      </select>
-      <input id="userid" size="6" value="u_1" title="mock 用户 id（提交人不能审批自己）" />
-    </label>
+    <div class="session-box" id="session-box" hidden>
+      <span id="session-role" class="muted"></span>
+      <button id="logout" type="button" class="btn">登出</button>
+    </div>
   </header>
 
   <p id="banner" class="banner" hidden></p>
   <p id="error" class="error" hidden></p>
 
-  <main id="app">
+  <section id="login-view" class="panel login-panel">
+    <h2>登录</h2>
+    <form id="login-form" class="grid-form">
+      <label>用户名 <input name="username" required autocomplete="username" /></label>
+      <label>密码 <input name="password" type="password" required autocomplete="current-password" /></label>
+      <button type="submit" class="btn primary">登录</button>
+    </form>
+    <p id="login-error" class="error" hidden></p>
+  </section>
+
+  <main id="app" hidden>
     <section class="panel">
       <div class="panel-head">
         <h2>合同列表</h2>

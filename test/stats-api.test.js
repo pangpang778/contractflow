@@ -8,6 +8,10 @@ import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { createFileStore } from '../server/store.js';
 import { newContractId } from '../shared/ids.js';
+import { bootSessions, authClient } from './_session-helpers.js';
+
+const _clients = new Map();
+const bearerClient = async (base) => { if (!_clients.has(base)) _clients.set(base, await authClient(base)); return _clients.get(base); };
 
 const nowISO = () => new Date().toISOString();
 // 本地时区 YYYY-MM-DD（"本月到期"按本地自然月判）。
@@ -22,8 +26,9 @@ async function startServer(t, { withApprovals = true } = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-stats-'));
   const store = await createFileStore(path.join(dir, 'contracts.json'));
   const approvals = withApprovals ? await createFileStore(path.join(dir, 'approvals.json')) : null;
+  const sessions = await bootSessions(dir);
   const server = createApp({
-    store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], approvals, staticDir: null,
+    store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], approvals, sessions, staticDir: null,
   });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -35,15 +40,12 @@ async function startServer(t, { withApprovals = true } = {}) {
 }
 
 async function getJson(base, p, role) {
-  const headers = {};
-  if (role !== undefined) headers['X-User-Role'] = role;
-  const r = await fetch(base + p, { method: 'GET', headers });
+  const r = await (await bearerClient(base)).raw('GET', p, role ?? null); // role 空 → 无 Bearer
   return { status: r.status, json: await r.json().catch(() => null) };
 }
 
 async function getReport(base, p = '/api/export/report.md', role = 'viewer') {
-  const headers = { 'X-User-Role': role };
-  const r = await fetch(base + p, { method: 'GET', headers });
+  const r = await (await bearerClient(base)).raw('GET', p, role);
   return { status: r.status, contentType: r.headers.get('content-type') || '', body: await r.text() };
 }
 
@@ -119,32 +121,36 @@ test('只读无副作用：命中两端点后 store 文件内容字节不变、�
 
   const afterFiles = (await fs.readdir(dir)).sort();
   const after = await fs.readFile(contractsPath);
-  assert.deepEqual(beforeFiles, afterFiles, '目录不应新增任何文件');
+  const newFiles = afterFiles.filter((f) => !beforeFiles.includes(f));
+  assert.deepEqual(newFiles, ['sessions.json'], '唯一新增 = 会话持久化产物（登录鉴权的既定写入）；业务无副作用');
   assert.ok(before.equals(after), 'contracts.json 应字节级一致（只读）');
   assert.equal((await store.list()).length, 1, '不新增合同行');
 });
 
-// US-S4-③④ 身份矩阵：无头/空头/未知角色 -> 401，绝不落入业务分支
-test('无 X-User-Role / 空头 / 未知角色 -> 两端点均 401 错误信封，不产出业务数据', async (t) => {
+// US-S4-③④ 身份矩阵：无 Bearer / 坏 token / 未知 token -> 401，绝不落入业务分支
+test('无 Authorization / 格式坏 / 随机 token -> 两端点均 401 错误信封，不产出业务数据', async (t) => {
   const { base, store } = await startServer(t);
   await seedContract(store, { id: 'c_auth' });
 
-  for (const role of [undefined, '', 'hacker']) {
-    const stats = await getJson(base, '/api/stats', role);
-    assert.equal(stats.status, 401, `/api/stats 角色 ${JSON.stringify(role)} 应 401`);
-    assert.equal(stats.json.ok, false);
-    assert.equal(stats.json.error.code, 'UNAUTHORIZED');
-    assert.equal(stats.json.data, undefined, '错误信封不应携带业务数据');
-  }
+  const badHeaders = [{}, { Authorization: 'Bearer' }, { Authorization: `Bearer ${'a'.repeat(128)}` }];
+  for (const h of badHeaders) {
+    const stats = await fetch(base + '/api/stats', { headers: { 'Content-Type': 'application/json', ...h } });
+    assert.equal(stats.status, 401, `GET /api/stats ${JSON.stringify(h)} 应 401`);
+    const j = await stats.json();
+    assert.equal(j.ok, false);
+    assert.equal(j.error.code, 'UNAUTHORIZED');
+    assert.equal(j.data, undefined, '错误信封不应携带业务数据');
 
-  for (const role of [undefined, '', 'hacker']) {
-    const headers = {};
-    if (role !== undefined) headers['X-User-Role'] = role;
-    const r = await fetch(base + '/api/export/report.md', { method: 'GET', headers });
-    assert.equal(r.status, 401, `report.md 角色 ${JSON.stringify(role)} 应 401`);
-    const body = await r.json().catch(() => null);
+    const report = await fetch(base + '/api/export/report.md', { headers: h });
+    assert.equal(report.status, 401, `report.md ${JSON.stringify(h)} 应 401`);
+    const body = await report.json().catch(() => null);
     assert.ok(body && body.ok === false && body.error.code === 'UNAUTHORIZED', '401 应为 JSON 错误信封');
   }
+
+  // 对照：有效 viewer token → 200（证明 401 是鉴权驱动，非常规故障）
+  const client = await bearerClient(base);
+  assert.equal((await client.raw('GET', '/api/stats', 'viewer')).status, 200);
+  assert.equal((await client.raw('GET', '/api/export/report.md', 'viewer')).status, 200);
 });
 
 // 空库：两端点 200，不崩

@@ -7,14 +7,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { createFileStore } from '../server/store.js';
+import { bootSessions, authClient } from './_session-helpers.js';
 
 const VALID = {
   title: '采购合同', counterparty_id: 'cp_1', amount: 1500000, currency: 'CNY',
   start_date: '2026-09-01', end_date: '2027-09-01',
 };
-const EDITOR = { role: 'editor', id: 'u_1' };
-const ADMIN = { role: 'admin', id: 'u_2' };
-const VIEWER = { role: 'viewer', id: 'u_6' };
+const EDITOR = { role: 'editor', id: '__unused' };
+const ADMIN = { role: 'admin', id: '__unused' };
+const VIEWER = { role: 'viewer', id: '__unused' };
 
 async function setup(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-amend-'));
@@ -22,7 +23,8 @@ async function setup(t) {
   const cpStore = await createFileStore(path.join(dir, 'counterparties.json'));
   await cpStore.create({ id: 'cp_1', name: '示例供应商' }); // S5 相对方库引用校验：被引用的 cp_1 必须在库内
   const amendments = await createFileStore(path.join(dir, 'amendments.json'));
-  const server = createApp({ store, counterparties: cpStore, amendments, staticDir: null });
+  const sessions = await bootSessions(dir);
+  const server = createApp({ store, counterparties: cpStore, amendments, sessions, staticDir: null });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => {
@@ -32,14 +34,10 @@ async function setup(t) {
   return { base, store, amendments };
 }
 
+const _clients = new Map();
 async function req(base, method, p, role, id, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (role) headers['X-User-Role'] = role;
-  if (id) headers['X-User-Id'] = id;
-  const r = await fetch(base + p, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  let json = null;
-  try { json = await r.json(); } catch { /* 204 等无 body */ }
-  return { status: r.status, json };
+  if (!_clients.has(base)) _clients.set(base, await authClient(base));
+  return (await _clients.get(base)).reqJson(method, p, role, body); // id 已废弃（会话身份）
 }
 const createContract = (b, body = VALID) => req(b, 'POST', '/api/contracts', 'editor', EDITOR.id, body);
 const toActive = async (b, id) => {
@@ -149,7 +147,8 @@ test('对照载荷：每个 changed 键含 field / from(父当前值) / to(chang
 test('未接线变更单存储 → 读/写 404，不 500', async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-amend-nowire-'));
   const store = await createFileStore(path.join(dir, 'c.json'));
-  const server = createApp({ store, staticDir: null }); // 缺 amendments
+  const sessions = await bootSessions(dir);
+  const server = createApp({ store, sessions, staticDir: null }); // 缺 amendments
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => { await new Promise((r) => server.close(r)); await fs.rm(dir, { recursive: true, force: true }); });

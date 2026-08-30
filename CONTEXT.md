@@ -50,7 +50,22 @@
 - 定义: 访问控制单元，三档：admin（全量+改名+审批可见）/ editor（建、改、发起变更）/ viewer（只读）。
 - 边界: 内部工具不建企业级 RBAC，角色硬编码三档即可扩展。
 - 已解决的歧义: 角色挂在登录用户上，不挂合同上;单合同敏感度通过仅 admin 可见真实对手方名称承载。
-- 本迭代实例化（含 mock 身份 seam）：无登录系统，客户端携带 `X-User-Role: admin|editor|viewer` 头模拟身份，服务端据此强制授权，真认证后续替换此 seam。
+- 本迭代实例化（含 mock 身份 seam）：无登录系统，客户端携带 `X-User-Role: admin|editor|viewer` 头模拟身份，服务端据此强制授权，真认证后续替换此 seam。*（已退役——身份来源见下方"会话/认证"，ADR-0003 取代 ADR-0002。）*
   - 创建/编辑：admin、editor；viewer 只读（任何写 403）。
   - 审批(`in_review→pending_sign`)、作废→void、到期→expired、删除：仅 admin。
   - 完整权限矩阵见 docs/adr/0002。
+
+## 用户（User）
+- 定义: 内部系统登录账号，携带一档角色；密码仅存 scrypt 哈希 + 随机盐，不存明文。
+- 边界: 用户是"内部员工身份"，与相对方（外部签约主体）严格分开。
+- 已解决的歧义: 角色挂在用户上（用户登录后获得角色），不重复挂在请求头/合同上。
+
+## 会话 / 认证（Session / Auth）
+- 定义: 登录成功签发的临时凭证——`POST /api/auth/login` 以用户名+密码换取 `{token, role, id, expires_at}`，token = 32B 随机 bytes（hex）；后续请求持 `Authorization: Bearer <token>`，服务端以 `requireAuth` 中间件校验；`POST /api/auth/logout` 吊销。
+- 边界: 会话有效期 8 小时（自创建起，固定时长，无 refresh）；登录失败锁定（同用户名连续 5 次 → 锁 15 分钟，锁定态内存承载，重启清零）。
+- 已解决的歧义: 身份来源从 mock 头（X-User-Role/X-User-Id，ADR-0002）正式退役为 Bearer 会话——授权服务端判定点不变，只换身份来源。
+
+## 审计日志（Audit Log）
+- 定义: 所有写操作（合同/审批/变更单/相对方/认证事件）的只追加 JSONL 留痕，记录形 `{ts, actor, action, entity, entity_id, from, to, reason}`；admin 可经 `GET /api/audit` 过滤查询。
+- 边界: 只追加不改写；actor=操作者（会话用户 id）；写操作在存储包装层埋点（非 handler 散落）。
+- 已解决的歧义: 审计是"操作留痕"不是"业务字段本体的历史快照备份"——from/to 记录变更字段最小差异，不承担版本还原职责（后者归变更单/合同版本链）。

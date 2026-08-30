@@ -7,8 +7,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { createFileStore } from '../server/store.js';
+import { bootSessions, authClient } from './_session-helpers.js';
 
-const EDITOR = { role: 'editor', id: 'u1' };
+const EDITOR = { role: 'editor', id: '__unused' };
 const nowISO = () => new Date().toISOString();
 const dateFromToday = (d) => {
   const x = new Date();
@@ -21,21 +22,18 @@ async function setup(t) {
   const store = await createFileStore(path.join(dir, 'contracts.json'));
   const cpStore = await createFileStore(path.join(dir, 'counterparties.json'));
   await cpStore.create({ id: 'cp_1', name: '示例供应商', credit_code: '91370000MABCDE0001', risk_rating: 'C' });
-  const server = createApp({ store, counterparties: cpStore, staticDir: null });
+  const sessions = await bootSessions(dir);
+  const server = createApp({ store, counterparties: cpStore, sessions, staticDir: null });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => { await new Promise((r) => server.close(r)); await fs.rm(dir, { recursive: true, force: true }); });
   return { base, store };
 }
 
+const _clients = new Map();
 async function req(base, method, p, role, id, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (role) headers['X-User-Role'] = role;
-  if (id) headers['X-User-Id'] = id;
-  const r = await fetch(base + p, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  let json = null;
-  try { json = await r.json(); } catch { /* 204 等无 body */ }
-  return { status: r.status, json };
+  if (!_clients.has(base)) _clients.set(base, await authClient(base));
+  return (await _clients.get(base)).reqJson(method, p, role, body); // id 已废弃（会话身份）
 }
 const seed = (store, overrides = {}) => store.create({
   id: overrides.id ?? `c_${Math.random().toString(36).slice(2)}`,

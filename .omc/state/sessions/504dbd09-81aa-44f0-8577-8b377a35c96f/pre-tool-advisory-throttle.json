@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "entries": {
+    "79a93d4a2f8f50b95f852280616242fee1855dc99a3c75211917f55e72e95fae": {
+      "last_emitted_at_ms": 1788103438124,
+      "message": "Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests)."
+    },
+    "459c54e5f35d6a58dcd90d2aecc21fa6d1f35d241bc5b134c506f87dc7b6d67b": {
+      "last_emitted_at_ms": 1788103370640,
+      "message": "Combine searches in parallel when investigating multiple patterns."
+    },
+    "466399dafa2d20f60587180bad0a07358eb7f2bce724df0ff682f038ad33f5ad": {
+      "last_emitted_at_ms": 1788103363129,
+      "message": "Read multiple files in parallel when possible for faster analysis."
+    },
+    "445ed27a3872b681d98190bae61ccb84954e1bc4e140df5370be958dee776b3a": {
+      "last_emitted_at_ms": 1788103318862,
+      "message": "Verify changes work after editing. Test functionality before marking complete."
+    },
+    "fba04689cc5cf215f6c1ff92bc9c72e885d7959d4cdda1c4b8a6869c5afd9996": {
+      "last_emitted_at_ms": 1788102977298,
+      "message": "Spawning agent: ecc:code-reviewer (inherit) | Task: Review T4 endpoint migration"
+    },
+    "45ca03b0afed5df8dd7a7855a9f94ebf544048586f1b8ee5dfedbe0ae924ae58": {
+      "last_emitted_at_ms": 1788102723963,
+      "message": "Spawning agent: ecc:code-reviewer (inherit) | Task: Review T5 frontend auth UI"
+    },
+    "ff249a6e2be617d45bf176def499e31b185bf234d282580be09eb9a5b762ee14": {
+      "last_emitted_at_ms": 1788101907617,
+      "message": "Spawning agent: ecc:code-reviewer (inherit) | Task: Review T3 audit domain"
+    },
+    "d9ba6959594e78aabefacb746612a47fc2c4e1b72cbb12a7b7f5f76d848737fe": {
+      "last_emitted_at_ms": 1788101514705,
+      "message": "Spawning agent: ecc:code-reviewer (inherit) | Task: Review T1 auth session domain"
+    }
+  },
+  "updated_at": "2026-08-30T15:23:58.124Z"
+}
