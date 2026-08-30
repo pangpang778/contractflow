@@ -1,0 +1,8 @@
+{"t":0,"agent":"system","event":"keyword_detected","keyword":"tdd"}
+{"t":0,"agent":"aa326f3","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"aa326f3","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":249412}
+{"t":0,"agent":"a32d296","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a32d296","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":66419}
+{"t":0,"agent":"a50bd50","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a50bd50","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":137433}
+{"t":0,"agent":"a84fdbc","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}

@@ -7,6 +7,8 @@ import path from 'node:path';
 import { createContract, validateContract, applyUpdate, transition } from '../shared/contracts.js';
 import { openChain, resolveStep, resolveContractStatus, currentStep } from '../shared/approvals.js';
 import { computeDueReminders } from '../shared/reminders.js';
+import { computeStats, computeUpcoming, computeOverdueChains } from '../shared/stats.js';
+import { renderReport } from '../shared/report.js';
 import { renderTemplate } from '../shared/mail.js';
 import { buildVars, nextMailState, MAX_RETRY } from '../shared/consumer.js';
 import { newId } from '../shared/ids.js';
@@ -298,6 +300,30 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
       const grouped = { pending: 0, sent: 0, failed: 0 };
       for (const e of await outbox.list()) { const s = e.status ?? 'pending'; if (grouped[s] !== undefined) grouped[s]++; }
       return sendJson(res, 200, { reminders_scanned: due.length, mails_written: mailsWritten, outbox: grouped });
+    }
+
+    // -- 统计看板 + 导出（seam S3）：两端点均只读（读-算-回包，不写任何存储）--
+    if (pathname === '/api/stats' && req.method === 'GET') {
+      if (!requireLevel(res, req, 0)) return; // viewer 可读（偏离⑤）
+      return sendJson(res, 200, computeStats(await store.list(), new Date()));
+    }
+
+    if (pathname === '/api/export/report.md' && req.method === 'GET') {
+      if (!requireLevel(res, req, 0)) return; // viewer 可读（偏离⑤）
+      const now = new Date();
+      const contracts = await store.list();
+      // approvals 未接线（如 smoke）时空链处理，overdue=[]，不 500。
+      const chains = approvals ? await approvals.list() : [];
+      const payload = {
+        generated_at: now.toISOString(),
+        stats: computeStats(contracts, now),
+        upcoming: computeUpcoming(contracts, now),
+        overdue: computeOverdueChains(chains, contracts, now),
+      };
+      const md = renderReport(payload);
+      // 内联打开即导出（不做 attachment）；沿用 serveStatic 的 raw 回包模式。
+      res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
+      return res.end(md);
     }
 
     sendJson(res, 404, null, { code: 'NOT_FOUND', message: `无此接口 ${req.method} ${pathname}` });
