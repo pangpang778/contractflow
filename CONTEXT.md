@@ -79,3 +79,13 @@
 - 定义: `GET /api/search?q=<text>&status=<opt>` 跨合同（标题/编号=id/相对方名/正文首段）+ 相对方（名称/信用代码）的**大小写不敏感子串**匹配，结果按类型分组 `{contracts,counterparties}`、各内按 `updated_at` 倒序。
 - 边界: 无分词/无相关度排序；继承既有认证 seam（viewer 可读、未认证 401）与状态过滤叠加（`status` 仅过滤合同）。
 - 已解决的歧义: 索引为纯函数倒排快照，请求时读-建-查恒新鲜（重建幂等），不写任何存储（ADR-0006）。
+## Webhook（出站事件推送）
+- 定义: 合同/审批/变更单生命周期事件向外部系统（C4 内网工具）的**旁路异步推送**——`POST /api/webhooks` 保留配置（url+secret+enabled），事件点即时在 `webhook_deliveries` 落投递作业，admin 触发 `POST /api/webhooks/consume` 出站投递；签名为 `X-ContractFlow-Signature: HMAC-SHA256(`${timestamp}.${body}`)`，body 恒同签名体。
+- 边界: 5 类事件（`contract.created`、`approval.requested/approved/rejected`、`amendment.applied`）；失败按 1s/5s/25s 退避重试，第 4 次灭死信（`dead`）；secret **明文**存 `data/webhooks.json`（C4 内网工具，无外网指纹）。**配置 CRUD 仅 admin**，`GET` 永回掩码 `has_secret:true` 不回明文。
+- 已解决的歧义: 入队失败是旁路副作用（await 但 catch，不因入队失败而失败主请求/响应）；投递经由配置 id 判死信（webhook 被删/禁用后遗留作业直接 `dead`）。
+- 术语: 配置=webhook；待投递的工作单元=投递作业（webhook_deliveries）。纯函数域见 shared/webhooks.js（ADR-0007）。
+
+## CSV 批量导入（Import）
+- 定义: 一次性/定期将历史合同批量入库存档——`POST /api/contracts/import`（body 即 CSV 文本），固定表头 `编号,标题,相对方名,金额(分),币种,到期日`，逐行建合同；相对方按名自动创建（同名复用）。
+- 边界: 请求体校验——表头不精确 `400 INVALID_HEADER`、坏 CSV（引号未闭合/未知 BOM 尾列）`400 BAD_CSV`；**错误行不中断整批**（入 `failures[]` 带行号+原因，返回 `201` 全批报告）；`编号`→合同 id（批内唯一+库内唯一）；`start_date`=导入当日；空币种→`CNY`；金额恒（分）整数。
+- 已解决的歧义: 权限随合同创建（editor 起读写）；自动相对方无信用代码（`credit_code:''`），后续可手工补。RFC4180 手写解析在 shared/csv.js，行校验/报告在 shared/importer.js（ADR-0008）。

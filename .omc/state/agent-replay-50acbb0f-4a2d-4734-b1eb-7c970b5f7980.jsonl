@@ -1,4 +1,0 @@
-{"t":0,"agent":"system","event":"keyword_detected","keyword":"tdd"}
-{"t":0,"agent":"a0a9d26","agent_type":"untracked-native-fork","event":"agent_stop","success":true,"synthetic":true,"telemetry_status":"unmatched_stop","reason":"SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."}
-{"t":0,"agent":"ac5654f","agent_type":"code-reviewer","event":"agent_start","parent_mode":"none"}
-{"t":0,"agent":"ac5654f","agent_type":"code-reviewer","event":"agent_stop","success":true,"duration_ms":238317}
