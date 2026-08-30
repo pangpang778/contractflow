@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-08-30T15:07:53.746Z",
+  "session_id": "504dbd09-81aa-44f0-8577-8b377a35c96f",
+  "trigger": "auto",
+  "active_modes": {},
+  "todo_summary": {
+    "pending": 0,
+    "in_progress": 0,
+    "completed": 0
+  },
+  "wisdom_exported": false,
+  "background_jobs": {
+    "active": [],
+    "recent": [],
+    "stats": null
+  }
+}

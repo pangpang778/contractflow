@@ -15,7 +15,9 @@ body {
   border-bottom: 1px solid var(--color-border-default);
 }
 .brand { margin: 0; font-size: var(--type-scale-xl); font-weight: var(--type-weights-semibold); }
-.role-picker { font-size: var(--type-scale-sm); color: var(--color-text-secondary); }
+.session-box { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--type-scale-sm); color: var(--color-text-secondary); }
+.login-panel { max-width: 380px; margin: var(--space-xl) auto; }
+.login-panel h2 { text-align: center; }
 
 #app { max-width: 960px; margin: var(--space-xl) auto; padding: 0 var(--space-lg); display: grid; gap: var(--space-lg); }
 .panel { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); border-radius: var(--radius-md); padding: var(--space-lg); }

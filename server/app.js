@@ -1,5 +1,5 @@
 // server/app.js — node:http 服务：/api/* CRUD + 迁移 + 角色校验；可选静态托管（T3 接线）。
-// 统一错误信封 {ok,data,error}；身份 seam = X-User-Role 头（mock，真认证后替换，ADR-0002）。
+// 统一错误信封 {ok,data,error}；身份 seam = Bearer 会话（ADR-0003），写操作埋点审计。
 
 import { createServer } from 'node:http';
 import fs from 'node:fs/promises';
@@ -14,6 +14,7 @@ import { buildVars, nextMailState, MAX_RETRY } from '../shared/consumer.js';
 import { newId } from '../shared/ids.js';
 import { createCounterparty, updateCounterparty, validateCounterparty, normalizeCounterparty, findDuplicate } from '../shared/counterparties.js';
 import { createAmendment as createAmendmentEntity, transition as transitionAmendment, applyAmendment, validateAmendment } from '../shared/amendments.js';
+import { withAudit, queryAudit, requestCtx } from './audit.js';
 
 // legal = 只读 + 仅 2 级链复核（read 档，不获建/改/提交权；审批动作按步骤角色精确判定）。
 const ROLE_LEVEL = { viewer: 0, legal: 0, editor: 1, admin: 2 };
@@ -66,32 +67,7 @@ function readJsonBody(req) {
   });
 }
 
-function roleOf(req) {
-  const r = String(req.headers['x-user-role'] || '').toLowerCase();
-  return r in ROLE_LEVEL ? r : null;
-}
-
-// 身份缺失/非法 → 401；角色级不足 → 403。失败已回包，返回 null。
-function requireLevel(res, req, min) {
-  const role = roleOf(req);
-  if (!role) {
-    sendJson(res, 401, null, { code: 'UNAUTHORIZED', message: 'missing or invalid X-User-Role' });
-    return null;
-  }
-  if (ROLE_LEVEL[role] < min) {
-    sendJson(res, 403, null, { code: 'FORBIDDEN', message: 'insufficient role' });
-    return null;
-  }
-  return { role };
-}
-
-// 审批动作身份：角色 + 用户 id（mock X-User-Id，ADR-0002 延续）。缺任一 → null。
-function ident(req) {
-  const role = roleOf(req);
-  if (!role) return null;
-  const id = String(req.headers['x-user-id'] || '').trim();
-  return id ? { role, id } : null;
-}
+// 身份 helpers 移入 createApp 工厂，以闭包捕获 sessions（真实会话）。见工厂内实现。
 
 // 审批事件（outbox，本功能只写，F3 消费）。
 function outboxEvent(type, contract_id, chain_id, actor_id) {
@@ -108,21 +84,99 @@ async function openChainFor(approvals, contractId) {
   return pending[0] ?? null;
 }
 
-export function createApp({ store, counterparties = [], approvals = null, outbox = null, mails = null, amendments = null, staticDir = null }) {
-  const cpStore = toCounterpartyStore(counterparties); // 相对方：真 store 或旧数组种子 → 统一存储接口
-  return createServer(async (req, res) => {
-    try {
-      const { pathname } = new URL(req.url, 'http://x');
-      await route(req, res, pathname);
-    } catch (e) {
-      // 三个改接口共用：body 非 JSON → 400（而非 500）
-      if (e.code === 'BAD_BODY') return sendJson(res, 400, null, { code: 'BAD_REQUEST', message: e.message });
-      if (!res.writableEnded) sendJson(res, 500, null, { code: 'INTERNAL', message: '服务端错误' });
+export function createApp({ store, counterparties = [], approvals = null, outbox = null, mails = null, amendments = null, staticDir = null, sessions = null, audit = null }) {
+  let cpStore = toCounterpartyStore(counterparties); // 相对方：真 store 或旧数组种子 → 统一存储接口
+
+  // —— 认证 seam（ADR-0003）：身份来源 = Bearer 会话，替换 ADR-0002 的 X-User-* 头。——
+  // requireAuth 单函数：从 Authorization: Bearer <token> 解析会话 → {userId, role, expiresAt} 或 null。
+  const auth = (req) => {
+    if (!sessions) return null;
+    const h = req.headers['authorization'];
+    if (!h) return null;
+    const m = /^Bearer\s+(.+)$/i.exec(String(h));
+    return m ? sessions.validate(m[1].trim()) : null;
+  };
+  // 身份缺失/非法 → 401；角色不在 ROLE_LEVEL → 401（fail-closed，防配置错误角色越权）；角色级不足 → 403。失败已回包，返回 null。
+  const requireLevel = (res, req, min) => {
+    const a = auth(req);
+    if (!a) {
+      sendJson(res, 401, null, { code: 'UNAUTHORIZED', message: '未认证或会话失效' });
+      return null;
     }
+    if (!(a.role in ROLE_LEVEL)) {
+      sendJson(res, 401, null, { code: 'UNAUTHORIZED', message: 'unknown role' });
+      return null;
+    }
+    if (ROLE_LEVEL[a.role] < min) {
+      sendJson(res, 403, null, { code: 'FORBIDDEN', message: 'insufficient role' });
+      return null;
+    }
+    return { role: a.role };
+  };
+  // 审批动作身份：角色 + 用户 id（来自会话）。
+  const ident = (req) => { const a = auth(req); return a ? { role: a.role, id: a.userId } : null; };
+
+  // —— 审计埋点（seam S4）：写操作包在存储层（无 handler 侵入），actor 经 requestCtx 注入。——
+  const withA = (s, entity) => (audit ? withAudit(s, { entity, audit }) : s);
+  store = withA(store, 'contract');
+  cpStore = withA(cpStore, 'counterparty');
+  if (approvals) approvals = withA(approvals, 'approval');
+  if (amendments) amendments = withA(amendments, 'amendment');
+
+  return createServer((req, res) => {
+    // requestCtx 注入当前请求身份，供 withAudit 读取（未登录 → undefined → actor=system）。
+    const actor = auth(req);
+    return requestCtx.run(actor ? { id: actor.userId, role: actor.role } : undefined, async () => {
+      try {
+        const { pathname } = new URL(req.url, 'http://x');
+        await route(req, res, pathname);
+      } catch (e) {
+        // 三个改接口共用：body 非 JSON → 400（而非 500）
+        if (e.code === 'BAD_BODY') return sendJson(res, 400, null, { code: 'BAD_REQUEST', message: e.message });
+        if (!res.writableEnded) sendJson(res, 500, null, { code: 'INTERNAL', message: '服务端错误' });
+      }
+    });
   });
 
   async function route(req, res, pathname) {
     if (!pathname.startsWith('/api/')) return serveStatic(req, res, pathname);
+
+    // —— 认证端点（seam S2）：登录签发 Bearer 会话，登出吊销。认证事件落审计（auth.*）。——
+    const auditEvent = (rec) => { if (audit) audit.append({ ts: new Date().toISOString(), actor: 'system', ...rec }).catch((e) => console.error('audit write failed', e)); };
+    if (pathname === '/api/auth/login' && req.method === 'POST') {
+      if (!sessions) return sendJson(res, 501, null, { code: 'NOT_CONFIGURED', message: '认证未接线' });
+      const { username, password } = await readJsonBody(req);
+      try {
+        const s = await sessions.login(username, password);
+        auditEvent({ actor: s.userId, action: 'auth.login', entity: 'auth', entity_id: s.userId });
+        return sendJson(res, 200, { token: s.token, role: s.role, id: s.userId, expires_at: s.expiresAt });
+      } catch (e) {
+        if (e.code === 'LOCKED') {
+          auditEvent({ action: 'auth.login_locked', entity: 'auth' });
+          return sendJson(res, 423, null, { code: e.code, message: e.message, retry_after: Math.ceil(e.retryAfter / 1000) });
+        }
+        auditEvent({ action: 'auth.login_failed', entity: 'auth' }); // 用户名未验证，actor=unknown
+        return sendJson(res, 401, null, { code: 'UNAUTHORIZED', message: e.message });
+      }
+    }
+    if (pathname === '/api/auth/logout' && req.method === 'POST') {
+      const a = auth(req);
+      if (!a) return sendJson(res, 401, null, { code: 'UNAUTHORIZED', message: '未认证或会话失效' });
+      await sessions.revoke(req.headers['authorization'].split(/\s+/)[1].trim());
+      auditEvent({ actor: a.userId, action: 'auth.logout', entity: 'auth', entity_id: a.userId });
+      res.writeHead(204);
+      return res.end();
+    }
+
+    // —— 审计查询（seam S4）：admin 只读，可按 entity/actor/from/to 过滤（时序降序）。——
+    if (pathname === '/api/audit' && req.method === 'GET') {
+      if (!requireLevel(res, req, 2 /* admin */)) return;
+      if (!audit) return sendJson(res, 501, null, { code: 'NOT_CONFIGURED', message: '审计未接线' });
+      const sp = new URL(req.url, 'http://x').searchParams;
+      const q = {};
+      for (const k of ['entity', 'actor', 'from', 'to']) { const v = sp.get(k); if (v) q[k] = v; }
+      return sendJson(res, 200, queryAudit(await audit.list(), q));
+    }
 
     if (pathname === '/api/counterparties' && req.method === 'GET') {
       if (!requireLevel(res, req, 0)) return;

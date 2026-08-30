@@ -7,10 +7,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { createFileStore } from '../server/store.js';
+import { bootSessions, authClient } from './_session-helpers.js';
 
-const EDITOR = { role: 'editor', id: 'u1' };
-const ADMIN = { role: 'admin', id: 'u2' };
-const VIEWER = { role: 'viewer', id: 'u3' };
+const EDITOR = { role: 'editor', id: '__unused' };
+const ADMIN = { role: 'admin', id: '__unused' };
+const VIEWER = { role: 'viewer', id: '__unused' };
 
 // 18 位合法统一社会信用代码（合成：字母数字大写）；末 4 位数字区分唯一。
 const code = (n) => '91370000MABCDE' + String(n).padStart(4, '0');
@@ -19,7 +20,8 @@ async function setup(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-cp-'));
   const store = await createFileStore(path.join(dir, 'contracts.json'));
   const cpStore = await createFileStore(path.join(dir, 'counterparties.json'));
-  const server = createApp({ store, counterparties: cpStore, staticDir: null });
+  const sessions = await bootSessions(dir);
+  const server = createApp({ store, counterparties: cpStore, sessions, staticDir: null });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => {
@@ -29,14 +31,10 @@ async function setup(t) {
   return { base, store };
 }
 
+const _clients = new Map();
 async function req(base, method, p, role, id, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (role) headers['X-User-Role'] = role;
-  if (id) headers['X-User-Id'] = id;
-  const r = await fetch(base + p, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  let json = null;
-  try { json = await r.json(); } catch { /* 204 等无 body */ }
-  return { status: r.status, json };
+  if (!_clients.has(base)) _clients.set(base, await authClient(base));
+  return (await _clients.get(base)).reqJson(method, p, role, body); // id 已废弃（会话身份）
 }
 
 test('角色矩阵：viewer 读 200/创建 403；editor 创建 201、删除 403；admin 删除 204；缺身份 401', async (t) => {
@@ -114,7 +112,8 @@ test('列表/详情返回完整形态：信用代码/联系人/风险默认；�
 test('旧静态种子数组经 DI 仍可读（回归：既有 http.test.js 靠数组注入）', async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-cp-seed-'));
   const store = await createFileStore(path.join(dir, 'c.json'));
-  const server = createApp({ store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], staticDir: null });
+  const sessions = await bootSessions(dir);
+  const server = createApp({ store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], sessions, staticDir: null });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => { await new Promise((r) => server.close(r)); await fs.rm(dir, { recursive: true, force: true }); });

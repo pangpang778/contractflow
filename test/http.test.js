@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { createFileStore } from '../server/store.js';
+import { bootSessions, authClient } from './_session-helpers.js';
 
 const VALID = {
   title: '市集货架采购',
@@ -18,7 +19,8 @@ const VALID = {
 async function setup(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-api-'));
   const store = await createFileStore(path.join(dir, 'contracts.json'));
-  const server = createApp({ store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], staticDir: null });
+  const sessions = await bootSessions(dir);
+  const server = createApp({ store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], sessions, staticDir: null });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => {
@@ -28,13 +30,10 @@ async function setup(t) {
   return { base };
 }
 
+const _clients = new Map(); // base → authClient（懒建；role 空 → 无 Authorization，测 401）
 async function req(base, method, p, role, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (role) headers['X-User-Role'] = role;
-  const r = await fetch(base + p, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  let json = null;
-  try { json = await r.json(); } catch { /* 204 等无 body */ }
-  return { status: r.status, json };
+  if (!_clients.has(base)) _clients.set(base, await authClient(base));
+  return (await _clients.get(base)).reqJson(method, p, role, body);
 }
 
 async function createAs(base, role, body = VALID) {
@@ -154,11 +153,8 @@ test('未冻结编辑（editor）→ 200；不可变返回新对象', async (t) 
 
 test('malformed JSON body → 400（非 500）', async (t) => {
   const { base } = await setup(t);
-  const r = await fetch(`${base}/api/contracts`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-User-Role': 'editor' },
-    body: '{bad json',
-  });
+  const client = await authClient(base);
+  const r = await client.raw('POST', '/api/contracts', 'editor', '{bad json');
   assert.equal(r.status, 400);
   assert.equal((await r.json()).error.code, 'BAD_REQUEST');
 });

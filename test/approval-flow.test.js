@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { createFileStore } from '../server/store.js';
+import { bootSessions, authClient } from './_session-helpers.js';
 
 const VALID = {
   title: '大型采购项目',
@@ -14,19 +15,21 @@ const VALID = {
   start_date: '2026-09-01',
   end_date: '2027-09-01',
 };
-const EDITOR = { role: 'editor', id: 'u_1' };
-const EDITOR2 = { role: 'editor', id: 'u_4' };
-const ADMIN = { role: 'admin', id: 'u_2' };
-const LEGAL = { role: 'legal', id: 'u_3' };
-const VIEWER = { role: 'viewer', id: 'u_6' };
+// 会话下身份原子于 token：id 仅随调用携带（req 忽略），actor 取内建用户 id。
+const EDITOR = { role: 'editor', id: 'u_editor' };
+const EDITOR2 = { role: 'editor', id: '__unused' };
+const ADMIN = { role: 'admin', id: 'u_admin' };
+const LEGAL = { role: 'legal', id: 'u_legal' };
+const VIEWER = { role: 'viewer', id: 'u_viewer' };
 
 async function setup(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-ap-'));
   const store = await createFileStore(path.join(dir, 'contracts.json'));
   const approvals = await createFileStore(path.join(dir, 'approvals.json'));
   const outbox = await createFileStore(path.join(dir, 'outbox.json'));
+  const sessions = await bootSessions(dir);
   const server = createApp({
-    store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], approvals, outbox, staticDir: null,
+    store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], approvals, outbox, sessions, staticDir: null,
   });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -37,14 +40,10 @@ async function setup(t) {
   return { base, approvals, outbox };
 }
 
+const _clients = new Map();
 async function req(base, method, p, role, id, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (role) headers['X-User-Role'] = role;
-  if (id) headers['X-User-Id'] = id;
-  const r = await fetch(base + p, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  let json = null;
-  try { json = await r.json(); } catch { /* 204 等无 body */ }
-  return { status: r.status, json };
+  if (!_clients.has(base)) _clients.set(base, await authClient(base));
+  return (await _clients.get(base)).reqJson(method, p, role, body); // id 已废弃（会话身份）
 }
 const create = (b, role, id, body = VALID) => req(b, 'POST', '/api/contracts', role, id, body);
 const submit = (b, role, id, cid) => req(b, 'POST', `/api/contracts/${cid}/submit`, role, id);
@@ -85,7 +84,7 @@ test('US-A1：非 draft 提交 → 409；viewer 提交 → 403；缺 id 提交 �
   assert.equal((await submit(base, EDITOR.role, EDITOR.id, c.id)).status, 409);
   const d = (await create(base, EDITOR.role, EDITOR.id)).json.data;
   assert.equal((await submit(base, VIEWER.role, VIEWER.id, d.id)).status, 403);
-  assert.equal((await submit(base, EDITOR.role, null, d.id)).status, 401);
+  assert.equal((await submit(base, null, null, d.id)).status, 401, '无 Bearer → 401');
 });
 
 test('US-A2：单级链 admin 通过 → 链 approved + 合同 pending_sign + outbox approved', async (t) => {
@@ -141,10 +140,10 @@ test('US-A4：驳回 → 回 draft + 链 rejected 带意见 + outbox rejected；
   assert.equal(resub.json.data.contract.status, 'in_review');
 });
 
-test('US-A5：缺 id 审批 → 401；角色不匹配 → 403；错误信封统一', async (t) => {
+test('US-A5：无 Bearer 审批 → 401；角色不匹配 → 403；错误信封统一', async (t) => {
   const { base } = await setup(t);
   const { contract } = await newSubmittedContract(base, 1_500_000);
-  const noId = await approve(base, ADMIN.role, null, contract.id, 'x');
+  const noId = await approve(base, null, null, contract.id, 'x');
   assert.equal(noId.status, 401);
   assert.equal(noId.json.error.code, 'UNAUTHORIZED');
   const wrongRole = await approve(base, 'editor', EDITOR2.id, contract.id, 'x');
