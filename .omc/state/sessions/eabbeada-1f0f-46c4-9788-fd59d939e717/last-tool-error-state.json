@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"echo \\\"=== .omc ===\\\" && find .omc -type f | head -50 && echo \\\"=== top-level harness files? ===\\\" && ls CLAUDE.md AGENTS.md CONTEXT.md .mcp.json .gitattributes 2>&1; echo \\\"=== docs? desi...",
+  "error": "Exit code 2\n=== .omc ===\n.omc/project-memory.json\n.omc/state/sessions/eabbeada-1f0f-46c4-9788-fd59d939e717/last-tool-error-state.json\n.omc/state/sessions/eabbeada-1f0f-46c4-9788-fd59d939e717/pre-tool-advisory-throttle.json\n.omc/state/sessions/eabbeada-1f0f-46c4-9788-fd59d939e717/session-started.json\n=== top-level harness files? ===\nls: cannot access 'CLAUDE.md': No such file or directory\nls: cannot access 'AGENTS.md': No such file or directory\nls: cannot access 'CONTEXT.md': No such file or dire...",
+  "timestamp": "2026-08-30T10:23:13.603Z",
+  "retry_count": 2
+}

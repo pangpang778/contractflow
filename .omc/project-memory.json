@@ -1,0 +1,107 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1788085372491,
+  "projectRoot": "C:\\Users\\Administrator\\orca\\contractflow",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {},
+  "hotPaths": [
+    {
+      "path": "CLAUDE.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085423650,
+      "type": "file"
+    },
+    {
+      "path": "CONTEXT.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085446349,
+      "type": "file"
+    },
+    {
+      "path": ".mcp.json",
+      "accessCount": 1,
+      "lastAccessed": 1788085453596,
+      "type": "file"
+    },
+    {
+      "path": "docs/adr/0001-adopt-shipyard-harness.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085485032,
+      "type": "file"
+    },
+    {
+      "path": "docs/standards/architecture.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085487860,
+      "type": "file"
+    },
+    {
+      "path": "docs/standards/data.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085491482,
+      "type": "file"
+    },
+    {
+      "path": "docs/standards/process.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085494777,
+      "type": "file"
+    },
+    {
+      "path": "docs/business/README.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085525995,
+      "type": "file"
+    },
+    {
+      "path": "design-system/README.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085528633,
+      "type": "file"
+    },
+    {
+      "path": "design-system/tokens/README.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085532954,
+      "type": "file"
+    },
+    {
+      "path": "scripts/README.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085536830,
+      "type": "file"
+    },
+    {
+      "path": "AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1788085547086,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}
