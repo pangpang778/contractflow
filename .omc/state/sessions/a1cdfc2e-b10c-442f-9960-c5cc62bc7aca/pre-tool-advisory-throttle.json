@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "entries": {
+    "60d9b57eb6b373c3d29ee9516ef739aca39a23249b8c18526af93a894230336b": {
+      "last_emitted_at_ms": 1788090221973,
+      "message": "Spawning agent: unknown (opus) | Task: Review T2 stats/export endpoints"
+    },
+    "79a93d4a2f8f50b95f852280616242fee1855dc99a3c75211917f55e72e95fae": {
+      "last_emitted_at_ms": 1788090151792,
+      "message": "Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests)."
+    },
+    "466399dafa2d20f60587180bad0a07358eb7f2bce724df0ff682f038ad33f5ad": {
+      "last_emitted_at_ms": 1788090076866,
+      "message": "Read multiple files in parallel when possible for faster analysis."
+    },
+    "c7568e4936222ad52b15af10d1989191d3aca3ae5733b847911f49ffb646ad3d": {
+      "last_emitted_at_ms": 1788090071289,
+      "message": "Spawning agent: unknown (sonnet) | Task: T2: stats/export read-only endpoints"
+    },
+    "5df17961420e508796f4e9ccd8c1cd9fff58d8df78bf73aa5c2b64c64d3b325b": {
+      "last_emitted_at_ms": 1788089977794,
+      "message": "Spawning agent: unknown (opus) | Task: Review T1 stats+report diff"
+    },
+    "445ed27a3872b681d98190bae61ccb84954e1bc4e140df5370be958dee776b3a": {
+      "last_emitted_at_ms": 1788089903357,
+      "message": "Verify changes work after editing. Test functionality before marking complete."
+    },
+    "e110b4d9aeb9ba94462ab8626e3a733a71d191835bb553fdfdbb01acdd1f080f": {
+      "last_emitted_at_ms": 1788089712615,
+      "message": "Spawning agent: unknown (opus) | Task: T1: stats+report pure functions"
+    },
+    "459c54e5f35d6a58dcd90d2aecc21fa6d1f35d241bc5b134c506f87dc7b6d67b": {
+      "last_emitted_at_ms": 1788089523129,
+      "message": "Combine searches in parallel when investigating multiple patterns."
+    }
+  },
+  "updated_at": "2026-08-30T11:43:41.973Z"
+}
