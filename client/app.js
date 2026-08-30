@@ -95,9 +95,10 @@ async function refreshList() {
         <td>${esc(c.title)}</td>
         <td>${esc(cps.get(c.counterparty_id) || c.counterparty_id)}</td>
         <td class="money">${money(c.amount)}</td>
+        <td>${esc(c.currency || 'CNY')}</td>
         <td>${badge(c.status)}</td>
       </tr>`).join('')
-    : '<tr><td colspan="4">暂无合同</td></tr>';
+    : '<tr><td colspan="5">暂无合同</td></tr>';
   document.querySelectorAll('#contract-list tr[data-id]').forEach((tr) => {
     tr.addEventListener('click', () => loadDetail(tr.dataset.id).catch((e) => flash(e.message)));
   });
@@ -111,7 +112,7 @@ async function loadDetail(id) {
   $('detail').innerHTML = `
     <dt>标题</dt><dd>${esc(c.title)}</dd>
     <dt>相对方</dt><dd>${esc(cps.get(c.counterparty_id) || c.counterparty_id)}</dd>
-    <dt>金额（元）</dt><dd class="money">${money(c.amount)}</dd>
+    <dt>金额（元）</dt><dd class="money">${money(c.amount)} <span class="muted">${esc(c.currency || 'CNY')}</span></dd>
     <dt>期限</dt><dd>${esc(c.start_date)} ~ ${esc(c.end_date)}</dd>
     <dt>状态</dt><dd>${badge(c.status)}</dd>
     <dt>备注</dt><dd>${esc(c.description || '—')}</dd>`;
@@ -263,6 +264,40 @@ async function loadAmDetail(id) {
   $('am-apply').hidden = a.status !== 'approved' || role === 'viewer';
 }
 
+// —— 全文搜索：只读；分组渲染合同命中（可点入详情）与相对方命中。——
+async function runSearch(raw) {
+  const q = String(raw || '').trim();
+  const out = $('search-results');
+  if (!q) {
+    out.innerHTML = '<p class="muted">输入关键词后回车搜索（子串，跨合同 + 相对方）</p>';
+    return;
+  }
+  try {
+    const d = await api('/api/search?q=' + encodeURIComponent(q));
+    const cps = new Map(counterparties.map((c) => [c.id, c.name]));
+    const cRows = d.contracts.length
+      ? d.contracts.map((c) => `<tr data-id="${c.id}" class="clickable">
+          <td>合同</td><td>${esc(c.title)}</td><td>${esc(cps.get(c.counterparty_id) || c.counterparty_id)}</td>
+          <td class="money">${money(c.amount)}</td><td>${esc(c.currency || 'CNY')}</td><td>${badge(c.status)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="muted">无匹配合同</td></tr>';
+    const cpRows = d.counterparties.length
+      ? d.counterparties.map((cp) => `<tr>
+          <td>相对方</td><td>${esc(cp.name)}</td><td>${esc(cp.credit_code || '—')}</td>
+          <td>${esc(cp.risk_rating || 'C')}</td><td colspan="2">${esc(cp.contact || '—')}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="muted">无匹配相对方</td></tr>';
+    out.innerHTML = `
+      <div class="search-group"><h3>合同（${d.contracts.length}）</h3>
+        <table class="contract-table"><thead><tr><th>类型</th><th>标题</th><th>相对方</th><th>金额（元）</th><th>币种</th><th>状态</th></tr></thead><tbody>${cRows}</tbody></table></div>
+      <div class="search-group"><h3>相对方（${d.counterparties.length}）</h3>
+        <table class="contract-table"><thead><tr><th>类型</th><th>名称</th><th>信用代码</th><th>风险</th><th colspan="2">联系人</th></tr></thead><tbody>${cpRows}</tbody></table></div>`;
+    document.querySelectorAll('#search-results tr[data-id]').forEach((tr) => {
+      tr.addEventListener('click', () => loadDetail(tr.dataset.id).catch((e) => flash(e.message)));
+    });
+  } catch (err) { flash(err.message); }
+}
+
 async function amAction(action) {
   if (!amSelectedId) return;
   const body = (action === 'approve' || action === 'reject') ? { comment: (window.prompt('审批意见') || '').trim() } : undefined;
@@ -280,6 +315,7 @@ async function init() {
   $('logout').addEventListener('click', doLogout);
   $('refresh').addEventListener('click', () => refreshList().catch((e) => flash(e.message)));
   $('close-detail').addEventListener('click', () => { $('detail-panel').hidden = true; selected = null; });
+  $('search-form').addEventListener('submit', (e) => { e.preventDefault(); runSearch(new FormData(e.target).get('q')); });
 
   $('new-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -291,6 +327,7 @@ async function init() {
           title: f.get('title'),
           counterparty_id: f.get('counterparty_id'),
           amount: Math.round(Number(f.get('amount_yuan') || 0) * 100),
+          currency: f.get('currency') || 'CNY',
           start_date: f.get('start_date'),
           end_date: f.get('end_date'),
           description: f.get('description') || undefined,

@@ -5,7 +5,8 @@ import { newId } from './ids.js';
 
 export const STATES = ['draft', 'in_review', 'pending_sign', 'active', 'archived', 'void', 'expired'];
 export const TERMINAL = new Set(['archived', 'void', 'expired']);
-export const CURRENCY = 'CNY';
+import { CURRENCIES, DEFAULT_CURRENCY } from './rates.js';
+
 
 // active 后（及终态）只读的业务主体字段（冻结）——金额/币种/期限/相对方/标题。
 export const BUSINESS_FIELDS = ['title', 'amount', 'currency', 'counterparty_id', 'start_date', 'end_date'];
@@ -43,7 +44,7 @@ export function validateContract(input) {
   if (typeof input.title === 'string' && input.title.trim() === '') errors.push('标题不能为空');
   const a = input.amount;
   if (a !== undefined && (!Number.isInteger(a) || a < 0)) errors.push('金额必须为非负整数（单位：分）');
-  if (input.currency !== undefined && input.currency !== CURRENCY) errors.push(`币种必须为 ${CURRENCY}`);
+  if (input.currency !== undefined && !CURRENCIES.includes(input.currency)) errors.push(`币种必须为 ${CURRENCIES.join('/')}`);
   if (input.start_date !== undefined && !isValidDate(input.start_date)) errors.push('开始日期须为 YYYY-MM-DD');
   if (input.end_date !== undefined && !isValidDate(input.end_date)) errors.push('结束日期须为 YYYY-MM-DD');
   if (isValidDate(input.start_date) && isValidDate(input.end_date) && input.end_date < input.start_date) {
@@ -64,7 +65,7 @@ export function createContract(input, { id, now = new Date().toISOString() } = {
     title: input.title,
     counterparty_id: input.counterparty_id,
     amount: input.amount,
-    currency: CURRENCY,
+    currency: input.currency ?? DEFAULT_CURRENCY,
     start_date: input.start_date,
     end_date: input.end_date,
     description: input.description,

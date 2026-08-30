@@ -10,9 +10,12 @@ export const SESSION_TTL_MS = 8 * 3600 * 1000; // 8h
 export const LOCK_THRESHOLD = 5; // 连续失败锁定阈值
 export const LOCK_MS = 15 * 60 * 1000; // 15min
 const HASH_COST = 1 << 17; // 生产默认成本
+// N=1<<17 需 ~134MB 内存，超出 Node scryptSync 默认 maxmem(32MiB)，显式给足（2^28=256MB）。
+// 幂等：测试用低成本 cost 传入时 maxmem 无害；修复"新库首次起服 ensureUsers 崩溃"的潜在启动缺陷。
+const SCRYPT_MAXMEM = 268435456; // 256 << 20
 
 export function hashPassword(password, salt, cost = HASH_COST) {
-  return scryptSync(String(password), String(salt), 64, { N: cost }).toString('hex');
+  return scryptSync(String(password), String(salt), 64, { N: cost, maxmem: SCRYPT_MAXMEM }).toString('hex');
 }
 
 // 常数时间比较；长度不等直接 false（timingSafeEqual 要求等长，先校验防抛）。

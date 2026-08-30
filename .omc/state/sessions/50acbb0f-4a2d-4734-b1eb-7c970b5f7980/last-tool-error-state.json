@@ -1,0 +1,7 @@
+{
+  "tool_name": "Agent",
+  "tool_input_preview": "{\"description\":\"Review Run C code changes\",\"prompt\":\"You are the independent reviewer for \\\"Run C: 多币种 + 全文搜索\\\" in the contractflow repo (C:\\\\Users\\\\Administrator\\\\orca\\\\contractflow). The implementer...",
+  "error": "Agent type 'code-reviewer' not found. Available agents: a11y-architect, build-error-resolver, chief-of-staff, claude, code-architect, code-explorer, comment-analyzer, conversation-analyzer, cpp-build-resolver, cpp-reviewer, csharp-reviewer, dart-build-resolver, database-reviewer, doc-updater, docs-lookup, e2e-runner, ecc:a11y-architect, ecc:agent-evaluator, ecc:architect, ecc:build-error-resolver, ecc:chief-of-staff, ecc:code-architect, ecc:code-explorer, ecc:code-reviewer, ecc:code-simplifier, ...",
+  "timestamp": "2026-08-30T15:53:29.104Z",
+  "retry_count": 1
+}

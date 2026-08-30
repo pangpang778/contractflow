@@ -2,6 +2,7 @@
 // 状态分布 / 总金额 / 按状态金额 / 本月到期 / 即将到期 / 审批链超时。
 // 全部纯函数、now 注入可测；不透传 http/store。金额整数分语义，全程无浮点。
 import { STATES, TERMINAL } from './contracts.js';
+import { toCNY, rateFor, DEFAULT_CURRENCY } from './rates.js';
 
 // 管理周报视角 SLA：7 天未决即超额。经 computeOverdueChains 的 slaDays 参数可调。
 export const STATS_SLA_DAYS = 7;
@@ -31,7 +32,7 @@ function byEndDateAsc(a, b) {
  * @returns {{currency:string, total_cents:number, by_status:Record<string,number>,
  *            by_status_cents:Record<string,number>, ending_this_month:Array}}
  */
-export function computeStats(contracts, now) {
+export function computeStats(contracts, now, { rates } = {}) {
   const by_status = {};
   const by_status_cents = {};
   for (const s of STATES) {
@@ -41,6 +42,7 @@ export function computeStats(contracts, now) {
 
   let total_cents = 0;
   const ending = [];
+  const rates_used = {}; // 汇率来源留痕：本轮实际使用的非 CNY 币种→rate（全 CNY → {}）
 
   // 本月边界（本地时区）：首日…末日，含首末。
   const n = new Date(now);
@@ -49,9 +51,14 @@ export function computeStats(contracts, now) {
 
   for (const c of contracts) {
     const amount = Number.isInteger(c.amount) ? c.amount : 0;
+    const cur = c.currency ?? DEFAULT_CURRENCY;
+    const applied = rateFor(rates, cur); // CNY/缺表/缺币种/非正 → 1（视同 CNY）
+    if (cur !== DEFAULT_CURRENCY) rates_used[cur] = applied; // 非 CNY 留痕（含 fallback=1）
+    // fallback=1 表示"视同 CNY 恒等"，非真实汇率；仅当存在真实汇率才调 toCNY 折算。
+    const cny = cur !== DEFAULT_CURRENCY && applied !== 1 ? toCNY(amount, cur, applied, now) : amount;
     by_status[c.status] += 1;
-    by_status_cents[c.status] += amount;
-    total_cents += amount;
+    by_status_cents[c.status] += cny;
+    total_cents += cny;
 
     if (TERMINAL.has(c.status)) continue; // archived/void/expired 排除
     if (typeof c.end_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(c.end_date)) continue;
@@ -61,7 +68,7 @@ export function computeStats(contracts, now) {
   }
 
   ending.sort(byEndDateAsc);
-  return { currency: 'CNY', total_cents, by_status, by_status_cents, ending_this_month: ending };
+  return { currency: 'CNY', total_cents, by_status, by_status_cents, ending_this_month: ending, rates_used };
 }
 
 /**

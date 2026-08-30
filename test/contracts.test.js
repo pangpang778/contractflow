@@ -49,8 +49,13 @@ test('日期：非 YYYY-MM-DD 或 end<start 拒绝', () => {
   assert.equal(validateContract({ ...VALID, end_date: '2025-09-01' }).ok, false);
 });
 
-test('币种非 CNY 拒绝', () => {
-  assert.equal(validateContract({ ...VALID, currency: 'USD' }).ok, false);
+test('币种：USD/EUR 放行、未知拒绝、缺省默认 CNY', () => {
+  assert.equal(validateContract({ ...VALID, currency: 'USD' }).ok, true);
+  assert.equal(validateContract({ ...VALID, currency: 'EUR' }).ok, true);
+  assert.equal(validateContract({ ...VALID, currency: 'XXX' }).ok, false);
+  assert.equal(validateContract(VALID).ok, true);
+  assert.equal(createContract({ ...VALID, currency: 'USD' }).currency, 'USD');
+  assert.equal(createContract(VALID).currency, 'CNY');
 });
 
 test('迁移合法边 draft→in_review 不可变', () => {

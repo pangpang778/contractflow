@@ -2,7 +2,8 @@
 // 校验、生命周期状态机（draft→in_review→approved→applied）、apply 版本继承与 superseded 指针为单一事实源。
 // 复用合同的业务主体字段冻结集作为可变更键；approve 沿用既有"admin 审批/自审拒绝/意见必填"纪律（单级，非合同多级链）。
 
-import { BUSINESS_FIELDS, isValidDate, CURRENCY } from './contracts.js';
+import { BUSINESS_FIELDS, isValidDate } from './contracts.js';
+import { CURRENCIES } from './rates.js';
 import { newId } from './ids.js';
 
 export const AMENDMENT_STATUSES = ['draft', 'in_review', 'approved', 'applied', 'rejected'];
@@ -35,7 +36,7 @@ export function validateAmendment(input) {
       const v = changes[k];
       if (v === undefined || v === null || v === '') { errors.push(`change 值缺失: ${k}`); continue; }
       if (k === 'amount' && (!Number.isInteger(v) || v < 0)) errors.push('change amount 必须为非负整数（单位：分）');
-      if (k === 'currency' && v !== CURRENCY) errors.push(`change currency 必须为 ${CURRENCY}`);
+      if (k === 'currency' && !CURRENCIES.includes(v)) errors.push(`change currency 必须为 ${CURRENCIES.join('/')}`);
       if ((k === 'start_date' || k === 'end_date') && !isValidDate(v)) errors.push(`change ${k} 须为 YYYY-MM-DD`);
     }
   }
