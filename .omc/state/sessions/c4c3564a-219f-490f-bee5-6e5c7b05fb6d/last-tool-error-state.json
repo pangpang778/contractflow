@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cat > /tmp/probe.mjs <<'EOF'\\nimport fs from 'node:fs/promises'; import os from 'node:os'; import path from 'node:path';\\nimport { createApp } from './server/app.js'; import { createFileSt...",
+  "error": "Exit code 1\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nError [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\server\\app.js' imported from C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\probe.mjs\r\nDid you mean to import \"../../../../Administrator/orca/contractflow/server/app.js\"?\r\n    at finalizeResolution (node:internal/modules/esm/resolve:274:11)\r\n    at moduleResolve (node:internal/modules/esm/resolve:864:10)\r\n    at defaultResolve (node:...",
+  "timestamp": "2026-08-30T14:27:11.675Z",
+  "retry_count": 1
+}

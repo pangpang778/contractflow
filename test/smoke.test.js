@@ -130,3 +130,45 @@ test('S3 挂载渲染的数据链路：API round-trip 落到列表', async (t) =
   assert.equal(json.data.length, 1);
   assert.equal(json.data[0].title, '冒烟合同');
 });
+
+test('T6 静态挂载：两域 UI 挂载点 + 变更单对照 + 相对方管理 + 只读角色隐写', async (t) => {
+  const { base } = await setup(t);
+  const html = await (await get(base, '/')).text();
+  for (const id of ['cp-panel', 'cp-form', 'cp-list', 'am-panel', 'am-form', 'am-parent', 'am-submit', 'am-approve', 'am-apply', 'am-comparison']) {
+    assert.match(html, new RegExp(`id="${id}"`), `HTML 应含挂载点 ${id}`);
+  }
+  const js = await (await get(base, '/app.js')).text();
+  assert.match(js, /\/api\/amendments/);
+  assert.match(js, /\/api\/counterparties/);
+  assert.match(js, /X-User-Id/);
+  const css = await (await get(base, '/app.css')).text();
+  assert.match(css, /\[data-role="viewer"\]/, 'viewer 只读应隐藏写表单');
+});
+
+test('T6 全链路冒烟（F-0005 收敛）：active → 变更单提交/审批/应用 → 列表现继任隐父', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-f005-'));
+  const store = await createFileStore(path.join(dir, 'contracts.json'));
+  const amendments = await createFileStore(path.join(dir, 'amendments.json'));
+  const server = createApp({ store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], amendments, staticDir: CLIENT });
+  await new Promise((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  t.after(async () => { await new Promise((r) => server.close(r)); await fs.rm(dir, { recursive: true, force: true }); });
+
+  const h = (role, id = 'u_1') => ({ 'Content-Type': 'application/json', 'X-User-Role': role, 'X-User-Id': id });
+  const post = async (p, role, body, userId = 'u_1') => fetch(base + p, { method: 'POST', headers: h(role, userId), body: JSON.stringify(body) });
+  const c = await post('/api/contracts', 'editor', { title: 'F合约', counterparty_id: 'cp_1', amount: 1000, currency: 'CNY', start_date: '2026-01-01', end_date: '2026-12-31' });
+  assert.equal(c.status, 201);
+  const cid = (await c.json()).data.id;
+  for (const to of ['in_review', 'pending_sign', 'active']) assert.equal((await post(`/api/contracts/${cid}/status`, 'admin', { to })).status, 200);
+  const am = await post('/api/amendments', 'editor', { parent_contract_id: cid, reason: '加价', changes: { amount: 200000 } });
+  assert.equal(am.status, 201);
+  const amid = (await am.json()).data.id;
+  assert.equal((await post(`/api/amendments/${amid}/submit`, 'editor')).status, 200);
+  assert.equal((await post(`/api/amendments/${amid}/approve`, 'admin', { comment: 'ok' }, 'u_9')).status, 200); // 审批人 u_9 ≠ 提交人 u_1
+  const apply = await post(`/api/amendments/${amid}/apply`, 'admin', undefined, 'u_9');
+  assert.equal(apply.status, 200);
+  const succ = (await apply.json()).data;
+  assert.equal(succ.version, 2);
+  const list = await (await fetch(base + '/api/contracts', { headers: h('viewer') })).json();
+  assert.deepEqual(list.data.map((x) => x.id), [succ.id], '列表默认只含继任，父合同隐去');
+});

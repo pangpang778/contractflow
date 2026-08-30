@@ -1,0 +1,15 @@
+{
+  "agents": [
+    {
+      "agent_id": "a13cc6d9706fde9cb",
+      "agent_type": "typescript-reviewer",
+      "started_at": "2026-08-30T14:14:28.637Z",
+      "parent_mode": "none",
+      "status": "running"
+    }
+  ],
+  "total_spawned": 1,
+  "total_completed": 0,
+  "total_failed": 0,
+  "last_updated": "2026-08-30T14:14:28.741Z"
+}

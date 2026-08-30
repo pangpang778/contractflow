@@ -51,3 +51,8 @@ input, select, textarea { padding: var(--space-sm); border: 1px solid var(--colo
 .btn.primary { background: var(--color-text-primary); color: var(--color-bg-surface); border-color: var(--color-text-primary); }
 .banner { padding: var(--space-sm) var(--space-lg); background: color-mix(in srgb, var(--color-amount-positive) 12%, white); border-radius: var(--radius-sm); }
 .error { padding: var(--space-sm) var(--space-lg); background: color-mix(in srgb, var(--color-amount-negative) 12%, white); color: var(--color-amount-negative); border-radius: var(--radius-sm); }
+
+/* 只读身份隐藏写操作（前端展示层；服务端仍 403 兜底） */
+[data-role="viewer"] #cp-form,
+[data-role="viewer"] #am-form,
+[data-role="viewer"] .row-actions { display: none; }
