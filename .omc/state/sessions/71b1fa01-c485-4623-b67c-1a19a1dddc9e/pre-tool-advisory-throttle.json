@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "entries": {
+    "445ed27a3872b681d98190bae61ccb84954e1bc4e140df5370be958dee776b3a": {
+      "last_emitted_at_ms": 1788089202522,
+      "message": "Verify changes work after editing. Test functionality before marking complete."
+    },
+    "466399dafa2d20f60587180bad0a07358eb7f2bce724df0ff682f038ad33f5ad": {
+      "last_emitted_at_ms": 1788089190218,
+      "message": "Read multiple files in parallel when possible for faster analysis."
+    },
+    "79a93d4a2f8f50b95f852280616242fee1855dc99a3c75211917f55e72e95fae": {
+      "last_emitted_at_ms": 1788089121474,
+      "message": "Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests)."
+    },
+    "9d753b021e6d3ccac97e80d6265ae74144c55ab6abb5fd41593d8a1255198883": {
+      "last_emitted_at_ms": 1788089120630,
+      "message": "Spawning agent: general-purpose (inherit) [BACKGROUND] | Task: Review T3 API integration | Active agents: 1"
+    },
+    "55086aa0af247c32d7f5e5d7a2cfd8d88199e3621673f2eecfaabd0ee35ca628": {
+      "last_emitted_at_ms": 1788089115315,
+      "message": "Spawning agent: general-purpose (inherit) [BACKGROUND] | Task: Review T2 consumer state machine"
+    },
+    "bf591a39874955cbffa586262a3eb2d6cb15eb72339f525af3583293d2e26a62": {
+      "last_emitted_at_ms": 1788088830035,
+      "message": "Spawning agent: general-purpose (inherit) [BACKGROUND] | Task: Review T1 reminder/mail domain"
+    }
+  },
+  "updated_at": "2026-08-30T11:26:42.522Z"
+}
