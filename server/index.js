@@ -11,6 +11,8 @@ const DATA = path.join(ROOT, 'data');
 
 async function main() {
   const store = await createFileStore(path.join(DATA, 'contracts.json'));
+  const approvals = await createFileStore(path.join(DATA, 'approvals.json')); // 审批链
+  const outbox = await createFileStore(path.join(DATA, 'outbox.json')); // 审批事件，F3 消费
   let counterparties = [];
   try {
     counterparties = JSON.parse(await fs.readFile(path.join(DATA, 'counterparties.json'), 'utf8'));
@@ -18,7 +20,7 @@ async function main() {
     if (e.code !== 'ENOENT') throw e;
   }
   const port = Number(process.env.PORT || 3000);
-  const app = createApp({ store, counterparties, staticDir: path.join(ROOT, 'client') });
+  const app = createApp({ store, counterparties, approvals, outbox, staticDir: path.join(ROOT, 'client') });
   app.listen(port, () => console.log(`contractflow: http://localhost:${port}`));
 }
 

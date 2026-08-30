@@ -15,8 +15,10 @@
       <select id="role">
         <option value="viewer">viewer·只读</option>
         <option value="editor" selected>editor·编辑</option>
+        <option value="legal">legal·法务复核</option>
         <option value="admin">admin·管理员</option>
       </select>
+      <input id="userid" size="6" value="u_1" title="mock 用户 id（提交人不能审批自己）" />
     </label>
   </header>
 
@@ -66,6 +68,16 @@
         <input name="description" class="grow" placeholder="补充备注（主体字段已冻结时仅此项可改）" />
         <button type="submit" class="btn">保存备注</button>
       </form>
+      <section id="approval-panel" hidden>
+        <h3>审批</h3>
+        <button id="submit-approval" type="button" class="btn primary" hidden>提交审批</button>
+        <div id="approval-chain"></div>
+        <form id="approval-action" class="inline-form" hidden>
+          <input name="comment" class="grow" placeholder="审批意见（必填）" />
+          <button type="submit" name="approve" class="btn">通过</button>
+          <button type="submit" name="reject" class="btn danger">驳回</button>
+        </form>
+      </section>
     </section>
   </main>
 

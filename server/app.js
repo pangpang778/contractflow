@@ -5,8 +5,11 @@ import { createServer } from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createContract, validateContract, applyUpdate, transition } from '../shared/contracts.js';
+import { openChain, resolveStep, resolveContractStatus, currentStep } from '../shared/approvals.js';
+import { newId } from '../shared/ids.js';
 
-const ROLE_LEVEL = { viewer: 0, editor: 1, admin: 2 };
+// legal = 只读 + 仅 2 级链复核（read 档，不获建/改/提交权；审批动作按步骤角色精确判定）。
+const ROLE_LEVEL = { viewer: 0, legal: 0, editor: 1, admin: 2 };
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -50,7 +53,30 @@ function requireLevel(res, req, min) {
   return { role };
 }
 
-export function createApp({ store, counterparties = [], staticDir = null }) {
+// 审批动作身份：角色 + 用户 id（mock X-User-Id，ADR-0002 延续）。缺任一 → null。
+function ident(req) {
+  const role = roleOf(req);
+  if (!role) return null;
+  const id = String(req.headers['x-user-id'] || '').trim();
+  return id ? { role, id } : null;
+}
+
+// 审批事件（outbox，本功能只写，F3 消费）。
+function outboxEvent(type, contract_id, chain_id, actor_id) {
+  return { id: newId('evt'), type, contract_id, chain_id, actor_id, at: new Date().toISOString() };
+}
+
+// 合同最新的一条待决审批链；重提建新链，历史 rejected/approved 保留。
+async function openChainFor(approvals, contractId) {
+  if (!approvals) return null;
+  const chains = await approvals.list();
+  const pending = chains
+    .filter((c) => c.contract_id === contractId && c.status === 'pending')
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return pending[0] ?? null;
+}
+
+export function createApp({ store, counterparties = [], approvals = null, outbox = null, staticDir = null }) {
   return createServer(async (req, res) => {
     try {
       const { pathname } = new URL(req.url, 'http://x');
@@ -96,6 +122,13 @@ export function createApp({ store, counterparties = [], staticDir = null }) {
       const a = requireLevel(res, req, 0); // 迁移角色在领域层判定
       if (!a) return;
       const { to } = await readJsonBody(req);
+      // 偏离④：已提交过审批链的合同，in_review→pending_sign 仅能经 approve 达成，raw /status 阻断。
+      if (to === 'pending_sign' && approvals) {
+        const chains = await approvals.list();
+        if (chains.some((c) => c.contract_id === id)) {
+          return sendJson(res, 409, null, { code: 'ILLEGAL_TRANSITION', message: '请通过审批链完成审批' });
+        }
+      }
       try {
         const updated = await store.update(id, (cur) => transition(cur, to, a.role));
         if (!updated) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '合同不存在' });
@@ -104,6 +137,69 @@ export function createApp({ store, counterparties = [], staticDir = null }) {
         const code = e.code;
         if (code === 'FORBIDDEN') return sendJson(res, 403, null, { code, message: e.message });
         if (code === 'ILLEGAL_TRANSITION' || code === 'INVALID_STATE') return sendJson(res, 409, null, { code, message: e.message });
+        return sendJson(res, 400, null, { code, message: e.message });
+      }
+    }
+
+    // —— 审批工作流（seams S2+S3）：submit 建档、approve/reject 逐级留痕、outbox 只写 ——
+    // 只读：当前合同最新一条审批链 + 待决步骤（供前端渲染，前端不复算规则）。
+    if ((m = pathname.match(/^\/api\/contracts\/([^/]+)\/approval$/)) && req.method === 'GET') {
+      if (!requireLevel(res, req, 0)) return;
+      const id = m[1];
+      const chains = approvals ? await approvals.list() : [];
+      const mine = chains.filter((c) => c.contract_id === id).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+      const chain = mine[0] ?? null;
+      const step = chain && chain.status === 'pending' ? currentStep(chain) : null;
+      return sendJson(res, 200, { chain, current_step: step ? { level: step.level, role: step.role } : null });
+    }
+
+    if ((m = pathname.match(/^\/api\/contracts\/([^/]+)\/(submit|approve|reject)$/)) && req.method === 'POST') {
+      const id = m[1];
+      const action = m[2];
+      const who = ident(req);
+      if (!who) return sendJson(res, 401, null, { code: 'UNAUTHORIZED', message: 'missing or invalid identity (role + id)' });
+      if (action === 'submit' && ROLE_LEVEL[who.role] < 1) {
+        return sendJson(res, 403, null, { code: 'FORBIDDEN', message: '仅 editor/admin 可提交审批' });
+      }
+      if (!approvals || !outbox) {
+        return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '审批存储未接线' });
+      }
+      try {
+        const contract = await store.get(id);
+        if (!contract) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '合同不存在' });
+        let chain;
+        let next;
+        if (action === 'submit') {
+          if (contract.status !== 'draft') {
+            return sendJson(res, 409, null, { code: 'ILLEGAL_TRANSITION', message: '只有 draft 可提交审批' });
+          }
+          chain = await approvals.create(openChain({ contractId: id, amount: contract.amount, submitterId: who.id }));
+          next = await store.update(id, (cur) => resolveContractStatus(cur, 'in_review'));
+          await outbox.create(outboxEvent('approval.requested', id, chain.id, who.id));
+          return sendJson(res, 200, { contract: next, chain });
+        }
+        const { comment } = await readJsonBody(req);
+        chain = await openChainFor(approvals, id);
+        if (!chain) {
+          return sendJson(res, 409, null, { code: 'ILLEGAL_TRANSITION', message: '无待决审批链' });
+        }
+        const outcome = action === 'approve' ? 'approved' : 'rejected';
+        const resolved = resolveStep(chain, who, outcome, comment);
+        chain = await approvals.update(chain.id, () => resolved);
+        next = contract;
+        if (chain.status === 'approved') {
+          next = await store.update(id, (cur) => resolveContractStatus(cur, 'pending_sign'));
+        } else if (action === 'reject') {
+          next = await store.update(id, (cur) => resolveContractStatus(cur, 'draft'));
+        }
+        await outbox.create(outboxEvent(`approval.${outcome}`, id, chain.id, who.id));
+        return sendJson(res, 200, { contract: next, chain });
+      } catch (e) {
+        const code = e.code;
+        if (code === 'FORBIDDEN') return sendJson(res, 403, null, { code, message: e.message });
+        if (code === 'ILLEGAL_TRANSITION' || code === 'INVALID_STATE') return sendJson(res, 409, null, { code, message: e.message });
+        if (code === 'INVALID') return sendJson(res, 400, null, { code, message: e.message });
+        if (code === 'NOT_FOUND') return sendJson(res, 404, null, { code, message: e.message });
         return sendJson(res, 400, null, { code, message: e.message });
       }
     }

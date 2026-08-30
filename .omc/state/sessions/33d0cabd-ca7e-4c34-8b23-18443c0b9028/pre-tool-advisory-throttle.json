@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "entries": {
+    "79a93d4a2f8f50b95f852280616242fee1855dc99a3c75211917f55e72e95fae": {
+      "last_emitted_at_ms": 1788088156474,
+      "message": "Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests)."
+    },
+    "e2a6df3c41abac8e256dac61fd4911d0430910e71787fa41c81282aa1a41d7b8": {
+      "last_emitted_at_ms": 1788088150880,
+      "message": "Spawning agent: ecc:code-reviewer (inherit) | Task: Code review approval workflow diff"
+    },
+    "466399dafa2d20f60587180bad0a07358eb7f2bce724df0ff682f038ad33f5ad": {
+      "last_emitted_at_ms": 1788087972455,
+      "message": "Read multiple files in parallel when possible for faster analysis."
+    },
+    "445ed27a3872b681d98190bae61ccb84954e1bc4e140df5370be958dee776b3a": {
+      "last_emitted_at_ms": 1788087901168,
+      "message": "Verify changes work after editing. Test functionality before marking complete."
+    }
+  },
+  "updated_at": "2026-08-30T11:09:16.474Z"
+}
