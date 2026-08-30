@@ -1,0 +1,7 @@
+{
+  "type": {
+    "scale": { "xs": "12px", "sm": "13px", "base": "14px", "lg": "16px", "xl": "20px", "display": "26px" },
+    "weights": { "regular": 400, "medium": 500, "semibold": 600 },
+    "mono": "ui-monospace, SFMono-Regular, Menlo, monospace"
+  }
+}

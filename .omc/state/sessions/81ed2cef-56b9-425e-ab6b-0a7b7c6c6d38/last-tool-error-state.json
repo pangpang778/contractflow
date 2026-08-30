@@ -1,0 +1,7 @@
+{
+  "tool_name": "Grep",
+  "tool_input_preview": "{\"pattern\":\"BAD_BODY|bad json|直接 fetch|body: '{bad\",\"path\":\"C:\\\\Users\\\\Administrator\\\\orca\\\\contractflow\\\\test\\\\http.test.js\",\"output_mode\":\"content\",\"-C\":4}",
+  "error": "Search failed — ripgrep rejected the pattern, glob, or file type without searching:\nrg: regex parse error:\n    (?:BAD_BODY|bad json|直接 fetch|body: '{bad)\n                                          ^\nerror: repetition quantifier expects a valid decimal",
+  "timestamp": "2026-08-30T10:46:44.131Z",
+  "retry_count": 1
+}

@@ -1,0 +1,53 @@
+/* client/app.css — 工作台布局；颜色/间距/字号全部取自 :root 令牌，状态色只用 --color-status-*。 */
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--color-bg-app);
+  color: var(--color-text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: var(--type-scale-base);
+}
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-md) var(--space-xl);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.brand { margin: 0; font-size: var(--type-scale-xl); font-weight: var(--type-weights-semibold); }
+.role-picker { font-size: var(--type-scale-sm); color: var(--color-text-secondary); }
+
+#app { max-width: 960px; margin: var(--space-xl) auto; padding: 0 var(--space-lg); display: grid; gap: var(--space-lg); }
+.panel { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); border-radius: var(--radius-md); padding: var(--space-lg); }
+.panel-head { display: flex; align-items: center; justify-content: space-between; }
+h2 { margin: 0 0 var(--space-md); font-size: var(--type-scale-lg); font-weight: var(--type-weights-medium); }
+
+.contract-table { width: 100%; border-collapse: collapse; }
+.contract-table th, .contract-table td { text-align: left; padding: var(--space-sm) var(--space-md); border-bottom: 1px solid var(--color-border-default); }
+.contract-table th { color: var(--color-text-muted); font-size: var(--type-scale-xs); text-transform: uppercase; }
+.contract-table td.money { font-family: var(--type-mono); font-weight: var(--type-weights-medium); text-align: right; }
+.contract-table tbody tr { cursor: pointer; }
+.contract-table tbody tr:hover { background: var(--color-bg-inset); }
+
+.status { display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm); font-size: var(--type-scale-xs); font-weight: var(--type-weights-medium); }
+.status-draft { color: var(--color-status-draft); background: color-mix(in srgb, var(--color-status-draft) 15%, white); }
+.status-in_review { color: var(--color-status-in_review); background: color-mix(in srgb, var(--color-status-in_review) 15%, white); }
+.status-pending_sign { color: var(--color-status-pending_sign); background: color-mix(in srgb, var(--color-status-pending_sign) 15%, white); }
+.status-active { color: var(--color-status-active); background: color-mix(in srgb, var(--color-status-active) 15%, white); }
+.status-archived { color: var(--color-status-archived); background: color-mix(in srgb, var(--color-status-archived) 15%, white); }
+.status-void { color: var(--color-status-void); background: color-mix(in srgb, var(--color-status-void) 15%, white); }
+.status-expired { color: var(--color-status-expired, #7c1a1a); }
+
+.grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+.grid-form .full { grid-column: 1 / -1; }
+.grid-form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--type-scale-sm); color: var(--color-text-secondary); }
+input, select, textarea { padding: var(--space-sm); border: 1px solid var(--color-border-default); border-radius: var(--radius-sm); font-size: var(--type-scale-base); color: var(--color-text-primary); background: var(--color-bg-surface); }
+.detail dd { margin: 0 0 var(--space-sm); }
+.detail dt { color: var(--color-text-muted); font-size: var(--type-scale-xs); text-transform: uppercase; }
+
+.inline-form { display: flex; gap: var(--space-sm); margin-top: var(--space-md); }
+.inline-form .grow { flex: 1; }
+.btn { padding: var(--space-sm) var(--space-lg); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-bg-surface); cursor: pointer; font-size: var(--type-scale-sm); }
+.btn.primary { background: var(--color-text-primary); color: var(--color-bg-surface); border-color: var(--color-text-primary); }
+.banner { padding: var(--space-sm) var(--space-lg); background: color-mix(in srgb, var(--color-amount-positive) 12%, white); border-radius: var(--radius-sm); }
+.error { padding: var(--space-sm) var(--space-lg); background: color-mix(in srgb, var(--color-amount-negative) 12%, white); color: var(--color-amount-negative); border-radius: var(--radius-sm); }

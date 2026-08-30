@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>合同工作台</title>
+  <link rel="stylesheet" href="tokens.css" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="brand">合同工作台</h1>
+    <label class="role-picker">
+      身份（mock）
+      <select id="role">
+        <option value="viewer">viewer·只读</option>
+        <option value="editor" selected>editor·编辑</option>
+        <option value="admin">admin·管理员</option>
+      </select>
+    </label>
+  </header>
+
+  <p id="banner" class="banner" hidden></p>
+  <p id="error" class="error" hidden></p>
+
+  <main id="app">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>合同列表</h2>
+        <button id="refresh" type="button" class="btn">刷新</button>
+      </div>
+      <table class="contract-table">
+        <thead>
+          <tr><th>标题</th><th>相对方</th><th>金额（元）</th><th>状态</th></tr>
+        </thead>
+        <tbody id="contract-list"></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>新建合同</h2>
+      <form id="new-form" class="grid-form">
+        <label>标题 <input name="title" required /></label>
+        <label>相对方
+          <select name="counterparty_id" id="cp-select" required></select>
+        </label>
+        <label>金额（元） <input name="amount_yuan" type="number" min="0" step="0.01" required /></label>
+        <label>开始 <input name="start_date" type="date" required /></label>
+        <label>结束 <input name="end_date" type="date" required /></label>
+        <label class="full">备注 <textarea name="description"></textarea></label>
+        <button type="submit" class="btn primary">创建</button>
+      </form>
+    </section>
+
+    <section class="panel" id="detail-panel" hidden>
+      <div class="panel-head">
+        <h2>合同详情</h2>
+        <button id="close-detail" type="button" class="btn">收起</button>
+      </div>
+      <dl id="detail" class="detail"></dl>
+      <form id="status-form" class="inline-form">
+        <select id="status-to" class="status-select"></select>
+        <button type="submit" class="btn">迁移</button>
+      </form>
+      <form id="desc-form" class="inline-form">
+        <input name="description" class="grow" placeholder="补充备注（主体字段已冻结时仅此项可改）" />
+        <button type="submit" class="btn">保存备注</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

@@ -17,6 +17,9 @@
 - 定义: 一份合同的状态机：起草 → 审核 → 待签署 → 生效 → 履行 → 已变更(→生效) → 结算 → 归档。
 - 边界: 不可任意跳转；已归档/作废为终态。
 - 已解决的歧义: "作废"是独立终态，与"归档"不同——归档是正常完结，作废是被迫终止。
+- 本迭代 MVP 状态机（最小可冻结可追溯集）：`draft → in_review → pending_sign → active`，终态 `archived / void / expired`。
+  - `in_review→pending_sign` = 审批动作（admin），`pending_sign→active` = 签署动作；"审批通过/已签署"是动作输出而非状态，避免与 `pending_sign` 状态重复建模（权威矩阵见 docs/adr/0002 + spec）。
+  - `active` 后业务主体字段冻结；主体改动走变更单（后续功能）。非法跳转服务端 409，状态机矩阵为单一事实源。
 
 ## 签署生效（Signed / Frozen）
 - 定义: 合同经内外部签署后进入生效态，主体字段只读冻结，金额与期限锁定。
@@ -47,3 +50,7 @@
 - 定义: 访问控制单元，三档：admin（全量+改名+审批可见）/ editor（建、改、发起变更）/ viewer（只读）。
 - 边界: 内部工具不建企业级 RBAC，角色硬编码三档即可扩展。
 - 已解决的歧义: 角色挂在登录用户上，不挂合同上;单合同敏感度通过仅 admin 可见真实对手方名称承载。
+- 本迭代实例化（含 mock 身份 seam）：无登录系统，客户端携带 `X-User-Role: admin|editor|viewer` 头模拟身份，服务端据此强制授权，真认证后续替换此 seam。
+  - 创建/编辑：admin、editor；viewer 只读（任何写 403）。
+  - 审批(`in_review→pending_sign`)、作废→void、到期→expired、删除：仅 admin。
+  - 完整权限矩阵见 docs/adr/0002。

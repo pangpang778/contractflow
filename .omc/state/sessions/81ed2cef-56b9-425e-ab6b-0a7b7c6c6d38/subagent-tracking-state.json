@@ -1,0 +1,46 @@
+{
+  "agents": [
+    {
+      "agent_id": "a45f6c6290472068a",
+      "agent_type": "ecc:code-reviewer",
+      "started_at": "2026-08-30T10:44:34.854Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-30T10:45:59.204Z",
+      "duration_ms": 84350
+    },
+    {
+      "agent_id": "a9401f480a9089211",
+      "agent_type": "untracked-native-fork",
+      "started_at": "2026-08-30T10:43:22.796Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-30T10:43:22.796Z",
+      "synthetic": true,
+      "telemetry_status": "unmatched_stop",
+      "telemetry_note": "SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."
+    },
+    {
+      "agent_id": "ad3a773b74a9804d2",
+      "agent_type": "general-purpose",
+      "started_at": "2026-08-30T10:46:39.691Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-30T10:46:56.921Z",
+      "duration_ms": 17230
+    },
+    {
+      "agent_id": "a1055005a3ff0f0d0",
+      "agent_type": "general-purpose",
+      "started_at": "2026-08-30T10:44:47.264Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-30T10:47:00.179Z",
+      "duration_ms": 132915
+    }
+  ],
+  "total_spawned": 5,
+  "total_completed": 6,
+  "total_failed": 0,
+  "last_updated": "2026-08-30T10:47:00.181Z"
+}

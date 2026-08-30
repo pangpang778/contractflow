@@ -1,0 +1,13 @@
+{
+  "name": "contractflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "内部合同管理 web 应用（shipyard）。零运行时依赖。",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

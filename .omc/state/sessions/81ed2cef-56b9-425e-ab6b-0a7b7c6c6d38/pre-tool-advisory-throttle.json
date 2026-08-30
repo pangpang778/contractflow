@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "entries": {
+    "459c54e5f35d6a58dcd90d2aecc21fa6d1f35d241bc5b134c506f87dc7b6d67b": {
+      "last_emitted_at_ms": 1788086803760,
+      "message": "Combine searches in parallel when investigating multiple patterns."
+    },
+    "79a93d4a2f8f50b95f852280616242fee1855dc99a3c75211917f55e72e95fae": {
+      "last_emitted_at_ms": 1788086731484,
+      "message": "Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests)."
+    },
+    "82c03e4882462bdf55f4ebc03d4cfc31eeb15f0ff721a8f24efb456df9c31f6f": {
+      "last_emitted_at_ms": 1788086686866,
+      "message": "Spawning agent: unknown (inherit) | Task: Code review T3 workbench-ui | Active agents: 2"
+    },
+    "daf68b5684eaf635f2ca76bd3cd5c31114e626b5d098f868b0ba87843d2a41ba": {
+      "last_emitted_at_ms": 1788086681391,
+      "message": "Spawning agent: unknown (inherit) | Task: Code review T2 http-api-role | Active agents: 1"
+    },
+    "445ed27a3872b681d98190bae61ccb84954e1bc4e140df5370be958dee776b3a": {
+      "last_emitted_at_ms": 1788086659683,
+      "message": "Verify changes work after editing. Test functionality before marking complete."
+    },
+    "466399dafa2d20f60587180bad0a07358eb7f2bce724df0ff682f038ad33f5ad": {
+      "last_emitted_at_ms": 1788086607053,
+      "message": "Read multiple files in parallel when possible for faster analysis."
+    },
+    "cd4207f3343a66dc70f1d956affe5975c77223328b9602510bda3cfb337d361a": {
+      "last_emitted_at_ms": 1788086129424,
+      "message": "Spawning agent: ecc:code-reviewer (sonnet) | Task: Code review T1 domain+storage"
+    }
+  },
+  "updated_at": "2026-08-30T10:46:43.760Z"
+}

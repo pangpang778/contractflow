@@ -1,0 +1,28 @@
+// server/index.js — 启动接线：存储 + 相对方种子 + staticDir(client) + 端口。`node server/index.js`
+
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fs from 'node:fs/promises';
+import { createApp } from './app.js';
+import { createFileStore } from './store.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DATA = path.join(ROOT, 'data');
+
+async function main() {
+  const store = await createFileStore(path.join(DATA, 'contracts.json'));
+  let counterparties = [];
+  try {
+    counterparties = JSON.parse(await fs.readFile(path.join(DATA, 'counterparties.json'), 'utf8'));
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+  }
+  const port = Number(process.env.PORT || 3000);
+  const app = createApp({ store, counterparties, staticDir: path.join(ROOT, 'client') });
+  app.listen(port, () => console.log(`contractflow: http://localhost:${port}`));
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

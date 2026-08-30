@@ -1,0 +1,12 @@
+{
+  "color": {
+    "bg": { "app": "#f5f6f8", "surface": "#ffffff", "inset": "#eef0f3" },
+    "text": { "primary": "#1a1d21", "secondary": "#5b6470", "muted": "#8a94a1" },
+    "border": { "default": "#d8dce1", "strong": "#b8bfc7" },
+    "amount": { "positive": "#0a7d3e", "negative": "#c62828", "neutral": "#1a1d21" },
+    "status": {
+      "draft": "#8a94a1", "in_review": "#b26a00", "pending_sign": "#3f51b5",
+      "active": "#0a7d3e", "amended": "#6a5acd", "settled": "#00695c", "archived": "#37474f", "void": "#c62828"
+    }
+  }
+}

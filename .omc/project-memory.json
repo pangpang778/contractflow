@@ -31,45 +31,159 @@
   "directoryMap": {},
   "hotPaths": [
     {
+      "path": "shared/contracts.js",
+      "accessCount": 9,
+      "lastAccessed": 1788086685243,
+      "type": "file"
+    },
+    {
+      "path": "server/app.js",
+      "accessCount": 8,
+      "lastAccessed": 1788086803449,
+      "type": "file"
+    },
+    {
+      "path": "test/contracts.test.js",
+      "accessCount": 7,
+      "lastAccessed": 1788086681244,
+      "type": "file"
+    },
+    {
+      "path": "server/store.js",
+      "accessCount": 7,
+      "lastAccessed": 1788086681263,
+      "type": "file"
+    },
+    {
+      "path": "CONTEXT.md",
+      "accessCount": 7,
+      "lastAccessed": 1788086696461,
+      "type": "file"
+    },
+    {
+      "path": "test/store.test.js",
+      "accessCount": 6,
+      "lastAccessed": 1788086681328,
+      "type": "file"
+    },
+    {
+      "path": "test/smoke.test.js",
+      "accessCount": 6,
+      "lastAccessed": 1788086855254,
+      "type": "file"
+    },
+    {
+      "path": "test/http.test.js",
+      "accessCount": 5,
+      "lastAccessed": 1788086808389,
+      "type": "file"
+    },
+    {
+      "path": "scripts/gen-css.js",
+      "accessCount": 4,
+      "lastAccessed": 1788086706745,
+      "type": "file"
+    },
+    {
+      "path": "docs/standards/data.md",
+      "accessCount": 3,
+      "lastAccessed": 1788086136216,
+      "type": "file"
+    },
+    {
+      "path": "shared/ids.js",
+      "accessCount": 3,
+      "lastAccessed": 1788086685550,
+      "type": "file"
+    },
+    {
+      "path": "docs/standards/process.md",
+      "accessCount": 3,
+      "lastAccessed": 1788086701694,
+      "type": "file"
+    },
+    {
+      "path": "docs/adr/0002-mock-identity-and-permission-matrix.md",
+      "accessCount": 3,
+      "lastAccessed": 1788086702021,
+      "type": "file"
+    },
+    {
+      "path": "docs/standards/architecture.md",
+      "accessCount": 2,
+      "lastAccessed": 1788085640781,
+      "type": "file"
+    },
+    {
+      "path": "design-system/tokens/README.md",
+      "accessCount": 2,
+      "lastAccessed": 1788085645739,
+      "type": "file"
+    },
+    {
+      "path": ".mcp.json",
+      "accessCount": 2,
+      "lastAccessed": 1788085652650,
+      "type": "file"
+    },
+    {
+      "path": "client/index.html",
+      "accessCount": 2,
+      "lastAccessed": 1788086690526,
+      "type": "file"
+    },
+    {
+      "path": "client/app.js",
+      "accessCount": 2,
+      "lastAccessed": 1788086690949,
+      "type": "file"
+    },
+    {
+      "path": "client/app.css",
+      "accessCount": 2,
+      "lastAccessed": 1788086691196,
+      "type": "file"
+    },
+    {
+      "path": "server/index.js",
+      "accessCount": 2,
+      "lastAccessed": 1788086707171,
+      "type": "file"
+    },
+    {
+      "path": "test/gen-css.test.js",
+      "accessCount": 2,
+      "lastAccessed": 1788086721131,
+      "type": "file"
+    },
+    {
+      "path": "design-system/tokens/color.json",
+      "accessCount": 2,
+      "lastAccessed": 1788086721467,
+      "type": "file"
+    },
+    {
+      "path": "design-system/tokens/space.json",
+      "accessCount": 2,
+      "lastAccessed": 1788086721779,
+      "type": "file"
+    },
+    {
+      "path": "design-system/tokens/type.json",
+      "accessCount": 2,
+      "lastAccessed": 1788086721987,
+      "type": "file"
+    },
+    {
       "path": "CLAUDE.md",
       "accessCount": 1,
       "lastAccessed": 1788085423650,
       "type": "file"
     },
     {
-      "path": "CONTEXT.md",
-      "accessCount": 1,
-      "lastAccessed": 1788085446349,
-      "type": "file"
-    },
-    {
-      "path": ".mcp.json",
-      "accessCount": 1,
-      "lastAccessed": 1788085453596,
-      "type": "file"
-    },
-    {
       "path": "docs/adr/0001-adopt-shipyard-harness.md",
       "accessCount": 1,
       "lastAccessed": 1788085485032,
-      "type": "file"
-    },
-    {
-      "path": "docs/standards/architecture.md",
-      "accessCount": 1,
-      "lastAccessed": 1788085487860,
-      "type": "file"
-    },
-    {
-      "path": "docs/standards/data.md",
-      "accessCount": 1,
-      "lastAccessed": 1788085491482,
-      "type": "file"
-    },
-    {
-      "path": "docs/standards/process.md",
-      "accessCount": 1,
-      "lastAccessed": 1788085494777,
       "type": "file"
     },
     {
@@ -85,12 +199,6 @@
       "type": "file"
     },
     {
-      "path": "design-system/tokens/README.md",
-      "accessCount": 1,
-      "lastAccessed": 1788085532954,
-      "type": "file"
-    },
-    {
       "path": "scripts/README.md",
       "accessCount": 1,
       "lastAccessed": 1788085536830,
@@ -100,6 +208,30 @@
       "path": "AGENTS.md",
       "accessCount": 1,
       "lastAccessed": 1788085547086,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 1,
+      "lastAccessed": 1788085999925,
+      "type": "file"
+    },
+    {
+      "path": "docs/adr",
+      "accessCount": 1,
+      "lastAccessed": 1788086216463,
+      "type": "directory"
+    },
+    {
+      "path": "data/counterparties.json",
+      "accessCount": 1,
+      "lastAccessed": 1788086404066,
+      "type": "file"
+    },
+    {
+      "path": "client/tokens.css",
+      "accessCount": 1,
+      "lastAccessed": 1788086691479,
       "type": "file"
     }
   ],
