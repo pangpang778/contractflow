@@ -16,6 +16,9 @@ import { createCounterparty, updateCounterparty, validateCounterparty, normalize
 import { buildSearchIndex, queryIndex } from '../shared/search.js';
 import { createAmendment as createAmendmentEntity, transition as transitionAmendment, applyAmendment, validateAmendment } from '../shared/amendments.js';
 import { withAudit, queryAudit, requestCtx } from './audit.js';
+import { parseCsv } from '../shared/csv.js';
+import { parseHeader as parseImportHeader, validateImportRow, makeImportedCounterparty, buildImportReport } from '../shared/importer.js';
+import { deliverWebhook, nextWebhookState, validateWebhookConfig } from '../shared/webhooks.js';
 
 // legal = 只读 + 仅 2 级链复核（read 档，不获建/改/提交权；审批动作按步骤角色精确判定）。
 const ROLE_LEVEL = { viewer: 0, legal: 0, editor: 1, admin: 2 };
@@ -56,6 +59,15 @@ function sendJson(res, status, data, error) {
   res.end(JSON.stringify(error ? { ok: false, error } : { ok: true, data }));
 }
 
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -85,7 +97,7 @@ async function openChainFor(approvals, contractId) {
   return pending[0] ?? null;
 }
 
-export function createApp({ store, counterparties = [], approvals = null, outbox = null, mails = null, amendments = null, staticDir = null, sessions = null, audit = null, rates = null }) {
+export function createApp({ store, counterparties = [], approvals = null, outbox = null, mails = null, amendments = null, staticDir = null, sessions = null, audit = null, rates = null, webhooks = null, webhookDeliveries = null, fetchImpl = null }) {
   let cpStore = toCounterpartyStore(counterparties); // 相对方：真 store 或旧数组种子 → 统一存储接口
 
   // —— 认证 seam（ADR-0003）：身份来源 = Bearer 会话，替换 ADR-0002 的 X-User-* 头。——
@@ -123,6 +135,28 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
   cpStore = withA(cpStore, 'counterparty');
   if (approvals) approvals = withA(approvals, 'approval');
   if (amendments) amendments = withA(amendments, 'amendment');
+
+  // webhook 出站入队：对每个 enabled 配置落一条投递作业（持 webhooks + webhookDeliveries 才生效）。
+  // 事件点调用处 await 并 try/catch —— 事件推送是旁路副作用，不因入队失败而失败主请求。
+  async function enqueueWebhook(event) {
+    if (!webhooks || !webhookDeliveries) return;
+    for (const wh of await webhooks.list()) {
+      if (!wh.enabled) continue;
+      await webhookDeliveries.create({
+        id: newId('wd'),
+        event_type: event.type,
+        event,
+        webhook_id: wh.id,
+        status: 'pending',
+        attempts: 0,
+        next_retry_at: null,
+        last_error: null,
+        created_at: new Date().toISOString(),
+      });
+    }
+  }
+  const fireEnqueue = (event) =>
+    enqueueWebhook(event).catch((e) => console.error('webhook enqueue failed', e));
 
   return createServer((req, res) => {
     // requestCtx 注入当前请求身份，供 withAudit 读取（未登录 → undefined → actor=system）。
@@ -208,6 +242,7 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
       }
       try {
         const contract = await store.create(createContract(input));
+        await fireEnqueue({ type: 'contract.created', contract_id: contract.id, amount: contract.amount, currency: contract.currency, at: contract.created_at });
         return sendJson(res, 201, contract);
       } catch (e) {
         const { status, code } = mapStoreError(e);
@@ -283,6 +318,7 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
           chain = await approvals.create(openChain({ contractId: id, amount: contract.amount, submitterId: who.id }));
           next = await store.update(id, (cur) => resolveContractStatus(cur, 'in_review'));
           await outbox.create(outboxEvent('approval.requested', id, chain.id, who.id));
+          await fireEnqueue({ type: 'approval.requested', contract_id: id, chain_id: chain.id, at: new Date().toISOString() });
           return sendJson(res, 200, { contract: next, chain });
         }
         const { comment } = await readJsonBody(req);
@@ -300,6 +336,7 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
           next = await store.update(id, (cur) => resolveContractStatus(cur, 'draft'));
         }
         await outbox.create(outboxEvent(`approval.${outcome}`, id, chain.id, who.id));
+        await fireEnqueue({ type: `approval.${outcome}`, contract_id: id, chain_id: chain.id, at: new Date().toISOString() });
         return sendJson(res, 200, { contract: next, chain });
       } catch (e) {
         const code = e.code;
@@ -505,6 +542,7 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
           await store.create(out.next);
           await store.update(parent.id, () => out.superseded);
           await amendments.update(id, () => out.amendment);
+          await fireEnqueue({ type: 'amendment.applied', contract_id: out.next.id, parent_contract_id: parent.id, at: new Date().toISOString() });
           return sendJson(res, 200, out.next);
         } catch (e) {
           return mapDomainError(res, e);
@@ -541,6 +579,172 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
       const status = sp.get('status') || undefined;
       const index = buildSearchIndex(await store.list(), (await cpStore.list()).map(normalizeCounterparty));
       return sendJson(res, 200, queryIndex(index, String(q), { status }));
+    }
+
+    // —— Webhook（Run D，seams S3+S2）：配置 CRUD admin 专属（secret 只写不读，GET 掩码）+ 试投 + 出站消费 ——
+    // maskWebhook：响应层永不回 secret，只暴露 has_secret 布尔（防泄漏进日志/前端）。
+    const maskWebhook = (w) => ({
+      id: w.id, name: w.name, url: w.url, enabled: w.enabled,
+      has_secret: Boolean(w.secret), created_at: w.created_at, updated_at: w.updated_at,
+    });
+
+    if (pathname === '/api/webhooks' && req.method === 'GET') {
+      if (!requireLevel(res, req, 2)) return; // admin
+      if (!webhooks) return sendJson(res, 501, null, { code: 'NOT_CONFIGURED', message: 'webhook 存储未接线' });
+      return sendJson(res, 200, (await webhooks.list()).map(maskWebhook));
+    }
+    if (pathname === '/api/webhooks' && req.method === 'POST') {
+      const a = requireLevel(res, req, 2);
+      if (!a) return;
+      if (!webhooks) return sendJson(res, 501, null, { code: 'NOT_CONFIGURED', message: 'webhook 存储未接线' });
+      const body = await readJsonBody(req);
+      const v = validateWebhookConfig(body);
+      if (!v.ok) return sendJson(res, 400, null, { code: 'BAD_REQUEST', message: v.errors.join('; ') });
+      const now = new Date().toISOString();
+      const wh = await webhooks.create({
+        id: newId('wh'),
+        name: body.name ?? body.url,
+        url: String(body.url).trim(),
+        secret: String(body.secret),
+        enabled: body.enabled ?? true,
+        created_at: now, updated_at: now,
+      });
+      return sendJson(res, 201, maskWebhook(wh));
+    }
+    if ((m = pathname.match(/^\/api\/webhooks\/([^/]+)\/test$/)) && req.method === 'POST') {
+      const a = requireLevel(res, req, 2);
+      if (!a) return;
+      const wh = await webhooks.get(m[1]);
+      if (!wh) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: 'webhook 不存在' });
+      const out = await deliverWebhook({ url: wh.url, secret: wh.secret }, { type: 'webhook.test' }, { fetch: fetchImpl, now: Date.now() });
+      return sendJson(res, 200, { sent: out.ok, status: out.status, error: out.error ?? null });
+    }
+    if ((m = pathname.match(/^\/api\/webhooks\/([^/]+)$/))) {
+      const id = m[1];
+      if (webhooks && req.method === 'PATCH') {
+        const a = requireLevel(res, req, 2);
+        if (!a) return;
+        const wh = await webhooks.get(id);
+        if (!wh) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: 'webhook 不存在' });
+        const patch = await readJsonBody(req);
+        const merged = {
+          ...wh,
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.url !== undefined ? { url: String(patch.url).trim() } : {}),
+          ...(patch.secret !== undefined ? { secret: String(patch.secret) } : {}),
+          ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        };
+        const v = validateWebhookConfig(merged);
+        if (!v.ok) return sendJson(res, 400, null, { code: 'BAD_REQUEST', message: v.errors.join('; ') });
+        const updated = await webhooks.update(id, (cur) => ({ ...merged, updated_at: new Date().toISOString() }));
+        return sendJson(res, 200, maskWebhook(updated));
+      }
+      if (webhooks && req.method === 'DELETE') {
+        const a = requireLevel(res, req, 2);
+        if (!a) return;
+        const ok = await webhooks.remove(id);
+        if (!ok) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: 'webhook 不存在' });
+        res.writeHead(204);
+        return res.end();
+      }
+    }
+    if (pathname === '/api/webhooks/consume' && req.method === 'POST') {
+      const a = requireLevel(res, req, 1); // editor+ 触发（镜像 outbox consume）
+      if (!a) return;
+      if (!webhookDeliveries) return sendJson(res, 501, null, { code: 'NOT_CONFIGURED', message: '投递存储未接线' });
+      const now = Date.now();
+      const whById = new Map((webhooks ? await webhooks.list() : []).map((w) => [w.id, w]));
+      const counts = { sent: 0, failed: 0, dead: 0, processed: 0 };
+      for (const job of await webhookDeliveries.list()) {
+        const st = job.status ?? 'pending';
+        if (st === 'sent' || st === 'dead') continue;
+        if (st === 'failed' && (job.next_retry_at ?? 0) > now) continue; // 退避未到点
+        const wh = whById.get(job.webhook_id);
+        if (!wh || !wh.enabled) {
+          await webhookDeliveries.update(job.id, (cur) => ({ ...cur, status: 'dead', last_error: 'webhook 未配置或已禁用' }));
+          counts.dead++;
+          counts.processed++;
+          continue;
+        }
+        const out = await deliverWebhook({ url: wh.url, secret: wh.secret }, job.event, { fetch: fetchImpl, now });
+        const next = nextWebhookState(job, out.ok, now);
+        await webhookDeliveries.update(job.id, (cur) => ({
+          ...cur,
+          status: next.status,
+          attempts: next.attempts,
+          next_retry_at: next.next_retry_at ?? null,
+          last_error: out.ok ? null : out.error,
+        }));
+        counts[next.status]++;
+        counts.processed++;
+      }
+      const outbox = { pending: 0, sent: 0, failed: 0, dead: 0 };
+      for (const j of await webhookDeliveries.list()) { const s = j.status ?? 'pending'; if (outbox[s] !== undefined) outbox[s]++; }
+      return sendJson(res, 200, { processed: counts.processed, sent: counts.sent, failed: counts.failed, dead: counts.dead, outbox });
+    }
+
+    // —— CSV 批量导入（Run D，seams S6+S5+S4）：枚举固定表头，逐行校验，错误行进报告不中断整批 ——
+    if (pathname === '/api/contracts/import' && req.method === 'POST') {
+      const a = requireLevel(res, req, 1); // editor+（建合同+建相对方）
+      if (!a) return;
+      const text = await readRawBody(req);
+      let parsed;
+      try { parsed = parseCsv(text); } catch (e) {
+        if (e.code === 'BAD_CSV') return sendJson(res, 400, null, { code: 'BAD_CSV', message: e.message });
+        throw e;
+      }
+      const headerOk = parseImportHeader(parsed.header);
+      if (!headerOk.ok) return sendJson(res, 400, null, { code: 'INVALID_HEADER', message: headerOk.reason });
+
+      const existingIds = new Set((await store.list()).map((c) => c.id));
+      const cpByName = new Map((await cpStore.list()).map((cp) => [cp.name, cp.id]));
+      const seenIds = new Set(); // 批内已成功建合同的编号
+      const results = [];
+      const createdContractIds = [];
+      const createdCounterpartyIds = [];
+      const today = new Date().toISOString().slice(0, 10);
+
+      for (const row of parsed.rows) {
+        const lineno = results.length + 1;
+        const v = validateImportRow(row, seenIds);
+        if (v.skip) continue;
+        if (!v.ok) { results.push({ line: lineno, field: '综合', reason: v.errors.join('; ') }); continue; }
+        if (existingIds.has(v.contract.编号)) {
+          results.push({ line: lineno, field: '编号', reason: `编号重复(库内): ${v.contract.编号}` });
+          continue;
+        }
+        // 相对方按名匹配，不存在自动建（批内同名复用，不重复建）。
+        let cpid = cpByName.get(v.contract.相对方名);
+        if (!cpid) {
+          const cp = makeImportedCounterparty(v.contract.相对方名);
+          await cpStore.create(cp);
+          cpByName.set(cp.name, cp.id);
+          createdCounterpartyIds.push(cp.id);
+          cpid = cp.id;
+        }
+        try {
+          const c = await store.create(createContract(
+            {
+              title: v.contract.标题,
+              counterparty_id: cpid,
+              amount: v.contract.金额,
+              currency: v.contract.币种,
+              start_date: today,
+              end_date: v.contract.到期日,
+            },
+            { id: v.contract.编号 },
+          ));
+          createdContractIds.push(c.id);
+          seenIds.add(c.id);
+          results.push(null);
+        } catch (e) {
+          if (e.code === 'CONFLICT' || e.code === 'INVALID') {
+            results.push({ line: lineno, field: '编号', reason: e.message });
+          } else throw e;
+        }
+      }
+      const report = buildImportReport(results, { contractIds: createdContractIds, counterpartyIds: createdCounterpartyIds });
+      return sendJson(res, 201, report);
     }
 
     sendJson(res, 404, null, { code: 'NOT_FOUND', message: `无此接口 ${req.method} ${pathname}` });

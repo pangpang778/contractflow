@@ -32,8 +32,8 @@
   "hotPaths": [
     {
       "path": "server/app.js",
-      "accessCount": 84,
-      "lastAccessed": 1788105472339,
+      "accessCount": 108,
+      "lastAccessed": 1788106760363,
       "type": "file"
     },
     {
@@ -43,27 +43,27 @@
       "type": "file"
     },
     {
+      "path": "shared/contracts.js",
+      "accessCount": 28,
+      "lastAccessed": 1788106628512,
+      "type": "file"
+    },
+    {
+      "path": "server/index.js",
+      "accessCount": 26,
+      "lastAccessed": 1788106289032,
+      "type": "file"
+    },
+    {
       "path": "test/smoke.test.js",
       "accessCount": 25,
       "lastAccessed": 1788102953754,
       "type": "file"
     },
     {
-      "path": "shared/contracts.js",
-      "accessCount": 25,
-      "lastAccessed": 1788105347072,
-      "type": "file"
-    },
-    {
-      "path": "server/index.js",
-      "accessCount": 24,
-      "lastAccessed": 1788105315886,
-      "type": "file"
-    },
-    {
       "path": "server/store.js",
-      "accessCount": 19,
-      "lastAccessed": 1788103725399,
+      "accessCount": 21,
+      "lastAccessed": 1788106679772,
       "type": "file"
     },
     {
@@ -92,8 +92,8 @@
     },
     {
       "path": "CONTEXT.md",
-      "accessCount": 14,
-      "lastAccessed": 1788104075850,
+      "accessCount": 15,
+      "lastAccessed": 1788105831786,
       "type": "file"
     },
     {
@@ -116,20 +116,26 @@
     },
     {
       "path": "shared/approvals.js",
+      "accessCount": 10,
+      "lastAccessed": 1788105831230,
+      "type": "file"
+    },
+    {
+      "path": "shared/consumer.js",
+      "accessCount": 10,
+      "lastAccessed": 1788106079046,
+      "type": "file"
+    },
+    {
+      "path": "shared/ids.js",
       "accessCount": 9,
-      "lastAccessed": 1788101141832,
+      "lastAccessed": 1788106090258,
       "type": "file"
     },
     {
       "path": "test/store.test.js",
       "accessCount": 8,
       "lastAccessed": 1788098979172,
-      "type": "file"
-    },
-    {
-      "path": "shared/ids.js",
-      "accessCount": 8,
-      "lastAccessed": 1788099281468,
       "type": "file"
     },
     {
@@ -142,12 +148,6 @@
       "path": "client/app.css",
       "accessCount": 8,
       "lastAccessed": 1788104945180,
-      "type": "file"
-    },
-    {
-      "path": "shared/consumer.js",
-      "accessCount": 7,
-      "lastAccessed": 1788098523087,
       "type": "file"
     },
     {
@@ -193,6 +193,12 @@
       "type": "file"
     },
     {
+      "path": "test/consumer.test.js",
+      "accessCount": 5,
+      "lastAccessed": 1788106083384,
+      "type": "file"
+    },
+    {
       "path": "scripts/gen-css.js",
       "accessCount": 4,
       "lastAccessed": 1788086706745,
@@ -208,12 +214,6 @@
       "path": "docs/standards/architecture.md",
       "accessCount": 4,
       "lastAccessed": 1788101047499,
-      "type": "file"
-    },
-    {
-      "path": "test/consumer.test.js",
-      "accessCount": 3,
-      "lastAccessed": 1788089119195,
       "type": "file"
     },
     {

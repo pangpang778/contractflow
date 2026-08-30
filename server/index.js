@@ -55,11 +55,14 @@ async function main() {
   } catch (e) {
     if (e.code !== 'ENOENT') console.error('rates.json load failed:', e.message);
   }
+  // Run D：webhook 配置（secret 明文存 data/webhooks.json，C4 内网工具）+ 出站投递作业队列。
+  const webhooks = await createFileStore(path.join(DATA, 'webhooks.json'));
+  const webhookDeliveries = await createFileStore(path.join(DATA, 'webhook_deliveries.json'));
   const port = Number(process.env.PORT || 3000);
   const app = createApp({
     store, counterparties, approvals, outbox, mails, amendments,
     sessions, audit, staticDir: path.join(ROOT, 'client'),
-    rates,
+    rates, webhooks, webhookDeliveries,
   });
   app.listen(port, () => console.log(`contractflow: http://localhost:${port}`));
 }
