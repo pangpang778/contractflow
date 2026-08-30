@@ -40,7 +40,8 @@ test('校验矩阵：缺 reason/缺父合同/changes 空/含非冻结键/金额�
   assert.equal(validateAmendment({ ...VALID, changes: { junk: 1 } }).ok, false);
   assert.equal(validateAmendment({ ...VALID, changes: { amount: 2000.5 } }).ok, false);
   assert.equal(validateAmendment({ ...VALID, changes: { amount: -1 } }).ok, false);
-  assert.equal(validateAmendment({ ...VALID, changes: { currency: 'USD' } }).ok, false);
+  assert.equal(validateAmendment({ ...VALID, changes: { currency: 'USD' } }).ok, true);
+  assert.equal(validateAmendment({ ...VALID, changes: { currency: 'XXX' } }).ok, false);
   assert.equal(validateAmendment(VALID).ok, true);
 });
 

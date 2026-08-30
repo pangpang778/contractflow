@@ -48,10 +48,18 @@ async function main() {
   await ensureUsers(usersFile);
   const sessions = await createSessionStore({ file: path.join(DATA, 'sessions.json'), usersFile });
   const audit = await createAuditWriter(path.join(DATA, 'audit.log'));
+  // 汇率表（Run C）：手工维护 data/rates.json；解析失败 → 空表不崩服务（折算回退 CNY/1）。
+  let rates = {};
+  try {
+    rates = JSON.parse(await fs.readFile(path.join(DATA, 'rates.json'), 'utf8'));
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.error('rates.json load failed:', e.message);
+  }
   const port = Number(process.env.PORT || 3000);
   const app = createApp({
     store, counterparties, approvals, outbox, mails, amendments,
     sessions, audit, staticDir: path.join(ROOT, 'client'),
+    rates,
   });
   app.listen(port, () => console.log(`contractflow: http://localhost:${port}`));
 }

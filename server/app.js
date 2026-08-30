@@ -13,6 +13,7 @@ import { renderTemplate } from '../shared/mail.js';
 import { buildVars, nextMailState, MAX_RETRY } from '../shared/consumer.js';
 import { newId } from '../shared/ids.js';
 import { createCounterparty, updateCounterparty, validateCounterparty, normalizeCounterparty, findDuplicate } from '../shared/counterparties.js';
+import { buildSearchIndex, queryIndex } from '../shared/search.js';
 import { createAmendment as createAmendmentEntity, transition as transitionAmendment, applyAmendment, validateAmendment } from '../shared/amendments.js';
 import { withAudit, queryAudit, requestCtx } from './audit.js';
 
@@ -84,7 +85,7 @@ async function openChainFor(approvals, contractId) {
   return pending[0] ?? null;
 }
 
-export function createApp({ store, counterparties = [], approvals = null, outbox = null, mails = null, amendments = null, staticDir = null, sessions = null, audit = null }) {
+export function createApp({ store, counterparties = [], approvals = null, outbox = null, mails = null, amendments = null, staticDir = null, sessions = null, audit = null, rates = null }) {
   let cpStore = toCounterpartyStore(counterparties); // 相对方：真 store 或旧数组种子 → 统一存储接口
 
   // —— 认证 seam（ADR-0003）：身份来源 = Bearer 会话，替换 ADR-0002 的 X-User-* 头。——
@@ -409,7 +410,7 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
     // -- 统计看板 + 导出（seam S3）：两端点均只读（读-算-回包，不写任何存储）--
     if (pathname === '/api/stats' && req.method === 'GET') {
       if (!requireLevel(res, req, 0)) return; // viewer 可读（偏离⑤）
-      return sendJson(res, 200, computeStats((await store.list()).filter(notSuperseded), new Date()));
+      return sendJson(res, 200, computeStats((await store.list()).filter(notSuperseded), new Date(), { rates }));
     }
 
     if (pathname === '/api/export/report.md' && req.method === 'GET') {
@@ -420,7 +421,8 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
       const chains = approvals ? await approvals.list() : [];
       const payload = {
         generated_at: now.toISOString(),
-        stats: computeStats(contracts, now),
+        // 与 /api/stats 同口径：外币折算 CNY（review MEDIUM：此前漏传 rates 致周报按原币累计，低于看板）。
+        stats: computeStats(contracts, now, { rates }),
         upcoming: computeUpcoming(contracts, now),
         overdue: computeOverdueChains(chains, contracts, now),
       };
@@ -526,6 +528,19 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
       const parent = await store.get(am.parent_contract_id);
       const comparison = Object.keys(am.changes).map((f) => ({ field: f, from: parent ? parent[f] : null, to: am.changes[f] }));
       return sendJson(res, 200, { ...am, comparison });
+    }
+
+    // —— 全文搜索（seams S3+S4）：跨合同+相对方子串，viewer 可读、status 过滤叠加。读-建-查恒新鲜，不写存储 ——
+    if (pathname === '/api/search' && req.method === 'GET') {
+      if (!requireLevel(res, req, 0)) return; // viewer 可读；未认证 401
+      const sp = new URL(req.url, 'http://x').searchParams;
+      const q = sp.get('q');
+      if (q == null || String(q).trim() === '') {
+        return sendJson(res, 400, null, { code: 'BAD_REQUEST', message: '缺少查询参数 q' });
+      }
+      const status = sp.get('status') || undefined;
+      const index = buildSearchIndex(await store.list(), (await cpStore.list()).map(normalizeCounterparty));
+      return sendJson(res, 200, queryIndex(index, String(q), { status }));
     }
 
     sendJson(res, 404, null, { code: 'NOT_FOUND', message: `无此接口 ${req.method} ${pathname}` });

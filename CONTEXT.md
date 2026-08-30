@@ -69,3 +69,13 @@
 - 定义: 所有写操作（合同/审批/变更单/相对方/认证事件）的只追加 JSONL 留痕，记录形 `{ts, actor, action, entity, entity_id, from, to, reason}`；admin 可经 `GET /api/audit` 过滤查询。
 - 边界: 只追加不改写；actor=操作者（会话用户 id）；写操作在存储包装层埋点（非 handler 散落）。
 - 已解决的歧义: 审计是"操作留痕"不是"业务字段本体的历史快照备份"——from/to 记录变更字段最小差异，不承担版本还原职责（后者归变更单/合同版本链）。
+
+## 币种 / 汇率（Currency / Rate）
+- 定义: 合同金额的计价币种（ISO 4217 子集 `{CNY,USD,EUR}`，默认 `CNY`）；汇率表 `data/rates.json` 手维护（`rates:{USD:7200000,EUR:7820000}`，e6 micro-CNY/单位）。
+- 边界: 金额恒按**原币整数分**存储（不改写）；`currency` 为冻结业务字段（生效后只读，改动走变更单）；折算只发生在统计/展示边界。
+- 已解决的歧义: 折算方向 = **向下取整分**（floor）；旧合同读侧补 `currency:'CNY'` 不迁移内容；汇率表为当前快照，无历史/生效日期。纯函数 `toCNY(amount,currency,rate)` 见 shared/rates.js（ADR-0005）。
+
+## 全文搜索（Search）
+- 定义: `GET /api/search?q=<text>&status=<opt>` 跨合同（标题/编号=id/相对方名/正文首段）+ 相对方（名称/信用代码）的**大小写不敏感子串**匹配，结果按类型分组 `{contracts,counterparties}`、各内按 `updated_at` 倒序。
+- 边界: 无分词/无相关度排序；继承既有认证 seam（viewer 可读、未认证 401）与状态过滤叠加（`status` 仅过滤合同）。
+- 已解决的歧义: 索引为纯函数倒排快照，请求时读-建-查恒新鲜（重建幂等），不写任何存储（ADR-0006）。

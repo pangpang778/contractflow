@@ -76,6 +76,48 @@ test('US-S1-④ 本月到期：首日/末日计入、上月/下月排除、终�
   assert.deepEqual(ids, ['j', 'b', 'd', 'a', 'c']); // 按 end_date 升序
 });
 
+// ── 多币种折算（Run C，S4）───────────────────────────────────
+
+const RATES = { base: 'CNY', rates: { USD: 7_200_000, EUR: 7_820_000 } };
+
+test('computeStats 折算：传入 {rates}，外币按 rate 折算 CNY 分，total_cents 为折算后合计', () => {
+  const contracts = [
+    mk('a', '2026-10-01', 10000, 'draft'),          // CNY → 原样
+    { ...mk('b', '2026-10-02', 100, 'active'), currency: 'USD' }, // 1 USD × 7.2 = 720 分
+    { ...mk('c', '2026-10-03', 100, 'active'), currency: 'EUR' }, // 1 EUR × 7.82 = 782 分
+  ];
+  const s = computeStats(contracts, NOW, { rates: RATES });
+  assert.equal(s.currency, 'CNY');
+  assert.equal(s.by_status_cents.draft, 10000);
+  // by_status_cents 以折算后 CNY 分为准
+  assert.equal(s.by_status_cents.active, 720 + 782);
+  assert.equal(s.total_cents, 10000 + 720 + 782);
+  // 汇率来源留痕
+  assert.equal(s.rates_used.USD, 7_200_000);
+  assert.equal(s.rates_used.EUR, 7_820_000);
+});
+
+test('computeStats 折算：缺汇率表 → 外币 fallback=1（视同 CNY 分），rates_used 仍留痕 fallback', () => {
+  const contracts = [{ ...mk('b', '2026-10-02', 100, 'active'), currency: 'USD' }];
+  const s = computeStats(contracts, NOW, { rates: undefined });
+  assert.equal(s.total_cents, 100); // 未折算，按 CNY 分计
+  assert.equal(s.rates_used.USD, 1); // fallback=1 留痕
+});
+
+test('computeStats 折算：纯 CNY 库 rates_used 为空对象', () => {
+  const contracts = [mk('a', '2026-10-01', 50, 'active')];
+  const s = computeStats(contracts, NOW, { rates: RATES });
+  assert.deepEqual(s.rates_used, {});
+  assert.equal(s.total_cents, 50);
+});
+
+test('computeStats 折算：rateFor 对缺币种/非整数 rate 拒用 → fallback=1，不崩', () => {
+  const contracts = [{ ...mk('b', '2026-10-02', 100, 'active'), currency: 'JPY' }];
+  const s = computeStats(contracts, NOW, { rates: RATES });
+  assert.equal(s.rates_used.JPY, 1);
+  assert.equal(s.total_cents, 100);
+});
+
 // ── computeUpcoming ────────────────────────────────────────────
 
 function isoDaysFrom(daysLeft) {

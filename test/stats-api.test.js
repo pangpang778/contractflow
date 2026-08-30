@@ -22,13 +22,13 @@ function localDate(offsetDays) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-async function startServer(t, { withApprovals = true } = {}) {
+async function startServer(t, { withApprovals = true, rates = undefined } = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cf-stats-'));
   const store = await createFileStore(path.join(dir, 'contracts.json'));
   const approvals = withApprovals ? await createFileStore(path.join(dir, 'approvals.json')) : null;
   const sessions = await bootSessions(dir);
   const server = createApp({
-    store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], approvals, sessions, staticDir: null,
+    store, counterparties: [{ id: 'cp_1', name: '示例供应商' }], approvals, sessions, staticDir: null, rates,
   });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -82,6 +82,35 @@ test('GET /api/stats：{ok:true, data:{currency,total_cents,by_status,by_status_
 });
 
 // US-S4-② report.md Content-Type + 三节存在且有序
+// ├ Run C S4① ┤ /api/stats 注入 rates 后外币折算为 CNY 分 + rates_used 留痕
+test('GET /api/stats：传入 rates，USD/EUR 合同折算 CNY 分，total_cents 为折算后合计，rates_used 留痕', async (t) => {
+  const { base, store } = await startServer(t, { rates: { base: 'CNY', rates: { USD: 7_200_000, EUR: 7_820_000 } } });
+  await seedContract(store, { amount: 10000, status: 'draft', end_date: localDate(400) });
+  await seedContract(store, { amount: 100, currency: 'USD', status: 'active', end_date: localDate(400) }); // 1 USD × 7.2 = 720
+  await seedContract(store, { amount: 100, currency: 'EUR', status: 'active', end_date: localDate(400) }); // 1 EUR × 7.82 = 782
+
+  const r = await getJson(base, '/api/stats', 'viewer');
+  assert.equal(r.status, 200);
+  const d = r.json.data;
+  assert.equal(d.currency, 'CNY');
+  assert.equal(d.by_status_cents.draft, 10000);
+  assert.equal(d.by_status_cents.active, 720 + 782);
+  assert.equal(d.total_cents, 10000 + 720 + 782);
+  assert.equal(d.rates_used.USD, 7_200_000);
+  assert.equal(d.rates_used.EUR, 7_820_000);
+});
+
+// ├ Run C ┤ report.md 与看板同口径：外币折算 CNY（review MEDIUM 回归锁）
+test('GET /api/export/report.md：注入 rates 后，USD 合同按 CNY 折算入统计表（与 /api/stats 同口径）', async (t) => {
+  const { base, store } = await startServer(t, { rates: { base: 'CNY', rates: { USD: 7_200_000 } } });
+  await seedContract(store, { amount: 100, currency: 'USD', status: 'active', end_date: localDate(400) }); // $1.00 → ¥7.20
+
+  const r = await getReport(base);
+  assert.equal(r.status, 200);
+  assert.ok(r.body.includes('| 合计 | 1 | 7.20 |'), '统计表合计应为折算后 CNY（120 分→7.20），非原币 1.00');
+  assert.ok(!r.body.includes('| 合计 | 1 | 1.00 |'), '不得按原币分累积（折算前口径）');
+});
+
 test('GET /api/export/report.md：text/markdown; charset=utf-8，body 依次含统计表/即将到期/超时清单三节', async (t) => {
   const { base, store } = await startServer(t);
   await seedContract(store, { id: 'c_up', title: '即将到期合同', status: 'active', amount: 123_456, end_date: localDate(0) });
