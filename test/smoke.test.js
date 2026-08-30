@@ -51,6 +51,19 @@ test('S3 静态资源 200：tokens.css 含状态变量、app.js/app.css 可达',
   assert.equal((await get(base, '/app.css')).status, 200);
 });
 
+test('S4 审批前端：入口含审批面板钩子、legal 身份、mock 用户 id', async (t) => {
+  const { base } = await setup(t);
+  const html = await (await get(base, '/')).text();
+  assert.match(html, /id="approval-panel"/);
+  assert.match(html, /id="submit-approval"/);
+  assert.match(html, /id="approval-action"/);
+  assert.match(html, /value="legal">/);
+  assert.match(html, /id="userid"/);
+  const js = await (await get(base, '/app.js')).text();
+  assert.match(js, /X-User-Id/);
+  assert.match(js, /\/approval/);
+});
+
 test('S3 路径遍历不泄露外部文件：越界 URL 不返回 server 源码', async (t) => {
   const { base } = await setup(t);
   for (const p of ['/../server/app.js', '/..%2f..%2fserver/store.js', '/%2e%2e/server/index.js']) {

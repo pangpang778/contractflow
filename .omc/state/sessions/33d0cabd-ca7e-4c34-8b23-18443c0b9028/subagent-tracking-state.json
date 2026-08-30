@@ -1,0 +1,15 @@
+{
+  "agents": [
+    {
+      "agent_id": "ab35f48157f5565f6",
+      "agent_type": "ecc:code-reviewer",
+      "started_at": "2026-08-30T11:09:11.234Z",
+      "parent_mode": "none",
+      "status": "running"
+    }
+  ],
+  "total_spawned": 1,
+  "total_completed": 0,
+  "total_failed": 0,
+  "last_updated": "2026-08-30T11:09:11.344Z"
+}

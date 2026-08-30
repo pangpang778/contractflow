@@ -1,0 +1,7 @@
+{
+  "tool_name": "Read",
+  "tool_input_preview": "{\"file_path\":\"C:\\\\Users\\\\Administrator\\\\orca\\\\contractflow\\\\contractflow\"}",
+  "error": "File does not exist. Note: your current working directory is C:\\Users\\Administrator\\orca\\contractflow.",
+  "timestamp": "2026-08-30T10:57:36.325Z",
+  "retry_count": 1
+}

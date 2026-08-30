@@ -5,11 +5,12 @@ const STATUSES = ['draft', 'in_review', 'pending_sign', 'active', 'archived', 'v
 const $ = (id) => document.getElementById(id);
 
 let role = 'editor';
+let userId = 'u_1';
 let counterparties = [];
 let selected = null;
 
 async function api(path, { method = 'GET', body } = {}) {
-  const opts = { method, headers: { 'X-User-Role': role } };
+  const opts = { method, headers: { 'X-User-Role': role, 'X-User-Id': userId } };
   if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
   const r = await fetch(path, opts);
   let json = null;
@@ -61,6 +62,32 @@ async function loadDetail(id) {
   $('status-to').innerHTML = STATUSES.map((s) => `<option value="${s}">${s}</option>`).join('');
   $('status-to').value = '';
   $('desc-form').description.value = c.description || '';
+  await loadApproval();
+}
+
+// 审批面板：从服务端读链 + 当前待决步骤渲染；仅据此显隐动作，服务端仍强校验（前端不复算规则）。
+async function loadApproval() {
+  const ap = await api(`/api/contracts/${selected.id}/approval`).catch(() => ({ chain: null, current_step: null }));
+  $('approval-panel').hidden = false;
+  $('submit-approval').hidden = selected.status !== 'draft';
+  const chain = ap.chain;
+  const box = $('approval-chain');
+  if (!chain) {
+    box.innerHTML = '<p class="muted">无审批记录</p>';
+  } else {
+    box.innerHTML = `<p>审批链 #${esc(chain.id)} · ${esc(chain.status)} · 金额 ¥${money(chain.amount)}</p><ol>`
+      + chain.steps.map((s) => `<li>${s.level} 级 · ${esc(s.role)} · ${s.outcome == null ? '待决' : esc(s.outcome)}${s.approver_id ? `（${esc(s.approver_id)}@${esc(s.decided_at || '')}）` : ''}${s.comment ? ` — ${esc(s.comment)}` : ''}</li>`).join('')
+      + '</ol>';
+  }
+  const step = ap.current_step;
+  const action = $('approval-action');
+  const canAct = !!step && role === step.role && !!chain && chain.submitter_id !== userId;
+  action.hidden = !canAct;
+}
+
+function applyIdentity() {
+  refreshList().catch((e) => flash(e.message));
+  if (selected) loadDetail(selected.id).catch((e) => flash(e.message));
 }
 
 async function loadCounterparties() {
@@ -69,7 +96,8 @@ async function loadCounterparties() {
 }
 
 async function init() {
-  $('role').addEventListener('change', (e) => { role = e.target.value; refreshList().catch((er) => flash(er.message)); });
+  $('role').addEventListener('change', (e) => { role = e.target.value; applyIdentity(); });
+  $('userid').addEventListener('change', (e) => { userId = e.target.value.trim() || userId; applyIdentity(); });
   $('refresh').addEventListener('click', () => refreshList().catch((e) => flash(e.message)));
   $('close-detail').addEventListener('click', () => { $('detail-panel').hidden = true; selected = null; });
 
@@ -109,6 +137,27 @@ async function init() {
     const f = new FormData(e.target);
     try {
       await api(`/api/contracts/${selected.id}`, { method: 'PATCH', body: { description: f.get('description') || undefined } });
+      loadDetail(selected.id);
+      refreshList();
+    } catch (err) { flash(err.message); }
+  });
+
+  $('submit-approval').addEventListener('click', async () => {
+    if (!selected) return;
+    try {
+      await api(`/api/contracts/${selected.id}/submit`, { method: 'POST' });
+      loadDetail(selected.id);
+      refreshList();
+    } catch (err) { flash(err.message); }
+  });
+
+  $('approval-action').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!selected) return;
+    const action = e.submitter && e.submitter.name === 'reject' ? 'reject' : 'approve';
+    const comment = new FormData(e.target).get('comment');
+    try {
+      await api(`/api/contracts/${selected.id}/${action}`, { method: 'POST', body: { comment } });
       loadDetail(selected.id);
       refreshList();
     } catch (err) { flash(err.message); }
