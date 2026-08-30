@@ -12,6 +12,8 @@ import { renderReport } from '../shared/report.js';
 import { renderTemplate } from '../shared/mail.js';
 import { buildVars, nextMailState, MAX_RETRY } from '../shared/consumer.js';
 import { newId } from '../shared/ids.js';
+import { createCounterparty, updateCounterparty, validateCounterparty, normalizeCounterparty, findDuplicate } from '../shared/counterparties.js';
+import { createAmendment as createAmendmentEntity, transition as transitionAmendment, applyAmendment, validateAmendment } from '../shared/amendments.js';
 
 // legal = 只读 + 仅 2 级链复核（read 档，不获建/改/提交权；审批动作按步骤角色精确判定）。
 const ROLE_LEVEL = { viewer: 0, legal: 0, editor: 1, admin: 2 };
@@ -21,6 +23,31 @@ const MIME = {
   '.css': 'text/css',
   '.json': 'application/json',
 };
+
+// 相对方 DI：真 store（有 list/get/create/update/remove）或旧静态种子数组（测试便利）。
+// 数组包装成内存 store，读路径统一 normalizeCounterparty 归一旧结构（缺信用代码/联系人、风险默认 C）。
+const notSuperseded = (c) => c.superseded !== true; // S5：superseded 父合同在统计/提醒/导出读侧收敛
+
+function toCounterpartyStore(src) {
+  if (src && typeof src.list === 'function') return src;
+  const arr = Array.isArray(src) ? src : [];
+  return {
+    async list() { return arr.map((r) => ({ ...r })); },
+    async get(id) { const x = arr.find((r) => r.id === id); return x ? { ...x } : null; },
+    async create(c) { arr.push(c); return c; },
+    async update(id, fn) { const i = arr.findIndex((x) => x.id === id); if (i < 0) return null; const n = fn(arr[i]); arr[i] = n; return n; },
+    async remove(id) { const i = arr.findIndex((x) => x.id === id); if (i < 0) return false; arr.splice(i, 1); return true; },
+  };
+}
+
+// 变更单/相对方动作错误 → HTTP 映射。0 emitter 校验。
+function mapDomainError(res, e) {
+  const code = e.code;
+  if (code === 'FORBIDDEN') return sendJson(res, 403, null, { code, message: e.message });
+  if (code === 'ILLEGAL_TRANSITION' || code === 'INVALID_STATE') return sendJson(res, 409, null, { code, message: e.message });
+  if (code === 'NOT_FOUND') return sendJson(res, 404, null, { code, message: e.message });
+  return sendJson(res, 400, null, { code, message: e.message });
+}
 
 function sendJson(res, status, data, error) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -81,7 +108,8 @@ async function openChainFor(approvals, contractId) {
   return pending[0] ?? null;
 }
 
-export function createApp({ store, counterparties = [], approvals = null, outbox = null, mails = null, staticDir = null }) {
+export function createApp({ store, counterparties = [], approvals = null, outbox = null, mails = null, amendments = null, staticDir = null }) {
+  const cpStore = toCounterpartyStore(counterparties); // 相对方：真 store 或旧数组种子 → 统一存储接口
   return createServer(async (req, res) => {
     try {
       const { pathname } = new URL(req.url, 'http://x');
@@ -98,7 +126,20 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
 
     if (pathname === '/api/counterparties' && req.method === 'GET') {
       if (!requireLevel(res, req, 0)) return;
-      return sendJson(res, 200, counterparties);
+      const rows = await cpStore.list();
+      return sendJson(res, 200, rows.map(normalizeCounterparty));
+    }
+
+    if (pathname === '/api/counterparties' && req.method === 'POST') {
+      const a = requireLevel(res, req, 1 /* editor */);
+      if (!a) return;
+      const body = await readJsonBody(req);
+      const v = validateCounterparty(body);
+      if (!v.ok) return sendJson(res, 400, null, { code: 'BAD_REQUEST', message: v.errors.join('; ') });
+      const dup = findDuplicate(await cpStore.list(), body);
+      if (dup) return sendJson(res, 409, null, { code: 'DUPLICATE', message: '该信用代码已被其他相对方占用', existing_id: dup.id });
+      const cp = await cpStore.create(createCounterparty(body));
+      return sendJson(res, 201, normalizeCounterparty(cp));
     }
 
     if (pathname === '/api/contracts' && req.method === 'POST') {
@@ -107,6 +148,9 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
       const input = await readJsonBody(req);
       const v = validateContract(input);
       if (!v.ok) return sendJson(res, 400, null, { code: 'BAD_REQUEST', message: v.errors.join('; ') });
+      if (input.counterparty_id !== undefined && !(await cpStore.get(input.counterparty_id))) {
+        return sendJson(res, 400, null, { code: 'INVALID', message: 'relative counterparty not in library: 相对方不在库内' });
+      }
       try {
         const contract = await store.create(createContract(input));
         return sendJson(res, 201, contract);
@@ -118,7 +162,10 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
 
     if (pathname === '/api/contracts' && req.method === 'GET') {
       if (!requireLevel(res, req, 0)) return;
-      return sendJson(res, 200, await store.list());
+      // S5：默认收敛 superseded 父合同；?include_superseded=1 显式含父与继任（读侧过滤，不改纯函数）。
+      const includeSuperseded = new URL(req.url, 'http://x').searchParams.get('include_superseded') === '1';
+      const rows = await store.list();
+      return sendJson(res, 200, includeSuperseded ? rows : rows.filter((c) => c.superseded !== true));
     }
 
     let m;
@@ -220,6 +267,9 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
         const a = requireLevel(res, req, 1 /* editor */);
         if (!a) return;
         const patch = await readJsonBody(req);
+        if (patch.counterparty_id !== undefined && !(await cpStore.get(patch.counterparty_id))) {
+          return sendJson(res, 400, null, { code: 'INVALID', message: 'relative counterparty not in library: 相对方不在库内' });
+        }
         try {
           const updated = await store.update(id, (cur) => applyUpdate(cur, patch));
           if (!updated) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '合同不存在' });
@@ -243,7 +293,7 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
     // —— 到期提醒只读视图（无副作用）+ outbox 消费视图 + 外部触发消费（F3/frontier）——
     if (pathname === '/api/reminders/due' && req.method === 'GET') {
       if (!requireLevel(res, req, 0)) return;
-      return sendJson(res, 200, computeDueReminders(await store.list(), new Date()));
+      return sendJson(res, 200, computeDueReminders((await store.list()).filter(notSuperseded), new Date()));
     }
 
     if (pathname === '/api/outbox' && req.method === 'GET') {
@@ -305,13 +355,13 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
     // -- 统计看板 + 导出（seam S3）：两端点均只读（读-算-回包，不写任何存储）--
     if (pathname === '/api/stats' && req.method === 'GET') {
       if (!requireLevel(res, req, 0)) return; // viewer 可读（偏离⑤）
-      return sendJson(res, 200, computeStats(await store.list(), new Date()));
+      return sendJson(res, 200, computeStats((await store.list()).filter(notSuperseded), new Date()));
     }
 
     if (pathname === '/api/export/report.md' && req.method === 'GET') {
       if (!requireLevel(res, req, 0)) return; // viewer 可读（偏离⑤）
       const now = new Date();
-      const contracts = await store.list();
+      const contracts = (await store.list()).filter(notSuperseded);
       // approvals 未接线（如 smoke）时空链处理，overdue=[]，不 500。
       const chains = approvals ? await approvals.list() : [];
       const payload = {
@@ -324,6 +374,104 @@ export function createApp({ store, counterparties = [], approvals = null, outbox
       // 内联打开即导出（不做 attachment）；沿用 serveStatic 的 raw 回包模式。
       res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
       return res.end(md);
+    }
+
+    // —— 相对方 CRUD（seams S2+S3）：编辑 editor+、删除 admin+、去重/引用校验服务端判定 ——
+    if ((m = pathname.match(/^\/api\/counterparties\/([^/]+)$/))) {
+      const id = m[1];
+      if (req.method === 'GET') {
+        if (!requireLevel(res, req, 0)) return;
+        const c = await cpStore.get(id);
+        return c ? sendJson(res, 200, normalizeCounterparty(c)) : sendJson(res, 404, null, { code: 'NOT_FOUND', message: '相对方不存在' });
+      }
+      if (req.method === 'PATCH') {
+        const a = requireLevel(res, req, 1 /* editor */);
+        if (!a) return;
+        const patch = await readJsonBody(req);
+        const cur = await cpStore.get(id);
+        if (!cur) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '相对方不存在' });
+        const effCode = patch.credit_code !== undefined ? patch.credit_code : cur.credit_code;
+        const dup = findDuplicate(await cpStore.list(), { credit_code: effCode }, id);
+        if (dup) return sendJson(res, 409, null, { code: 'DUPLICATE', message: '该信用代码已被其他相对方占用', existing_id: dup.id });
+        try {
+          const updated = await cpStore.update(id, (c) => updateCounterparty(c, patch));
+          if (!updated) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '相对方不存在' });
+          return sendJson(res, 200, normalizeCounterparty(updated));
+        } catch (e) {
+          if (e.code === 'INVALID') return sendJson(res, 400, null, { code: 'INVALID', message: e.message });
+          return mapDomainError(res, e);
+        }
+      }
+      if (req.method === 'DELETE') {
+        const a = requireLevel(res, req, 2 /* admin */);
+        if (!a) return;
+        const referenced = (await store.list()).some((c) => c.counterparty_id === id && c.superseded !== true);
+        if (referenced) return sendJson(res, 409, null, { code: 'CONFLICT', message: '该相对方被合同引用，不可删除' });
+        const ok = await cpStore.remove(id);
+        if (!ok) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '相对方不存在' });
+        res.writeHead(204); // 204 不允许携带 body
+        return res.end();
+      }
+    }
+
+    // —— 变更单 CRUD + 审批 + apply（seams S1+S3）：域纯函数在 shared/amendments.js，路由仅委托 ——
+    if (amendments && pathname === '/api/amendments' && req.method === 'GET') {
+      if (!requireLevel(res, req, 0)) return;
+      return sendJson(res, 200, await amendments.list());
+    }
+    if (amendments && pathname === '/api/amendments' && req.method === 'POST') {
+      const a = requireLevel(res, req, 1 /* editor */);
+      if (!a) return;
+      const body = await readJsonBody(req);
+      const v = validateAmendment(body);
+      if (!v.ok) return sendJson(res, 400, null, { code: 'BAD_REQUEST', message: v.errors.join('; ') });
+      const parent = await store.get(body.parent_contract_id);
+      if (!parent) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '父合同不存在' });
+      if (parent.superseded === true) return sendJson(res, 409, null, { code: 'ILLEGAL_TRANSITION', message: '父合同已失效，不可变更' });
+      if (parent.status !== 'active') return sendJson(res, 409, null, { code: 'ILLEGAL_TRANSITION', message: '仅对已生效（active）父合同创建变更单' });
+      const am = await amendments.create(createAmendmentEntity(body));
+      return sendJson(res, 201, am);
+    }
+    if ((m = pathname.match(/^\/api\/amendments\/([^/]+)\/(submit|approve|reject|apply)$/)) && req.method === 'POST') {
+      if (!amendments) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '变更单存储未接线' });
+      const id = m[1];
+      const action = m[2];
+      const who = ident(req);
+      if (!who) return sendJson(res, 401, null, { code: 'UNAUTHORIZED', message: 'missing or invalid identity (role + id)' });
+      if (action === 'submit' && ROLE_LEVEL[who.role] < 1) return sendJson(res, 403, null, { code: 'FORBIDDEN', message: '仅 editor/admin 可提交变更单' });
+      if (action !== 'submit' && ROLE_LEVEL[who.role] < 2) return sendJson(res, 403, null, { code: 'FORBIDDEN', message: '仅 admin 可审批/应用变更单' });
+      const am = await amendments.get(id);
+      if (!am) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '变更单不存在' });
+      if (action === 'apply') {
+        const parent = await store.get(am.parent_contract_id);
+        try {
+          const out = applyAmendment(am, parent);
+          await store.create(out.next);
+          await store.update(parent.id, () => out.superseded);
+          await amendments.update(id, () => out.amendment);
+          return sendJson(res, 200, out.next);
+        } catch (e) {
+          return mapDomainError(res, e);
+        }
+      }
+      const { comment } = await readJsonBody(req);
+      try {
+        const target = { submit: 'in_review', approve: 'approved', reject: 'rejected' }[action];
+        const next = transitionAmendment(am, target, who, { comment });
+        await amendments.update(id, () => next);
+        return sendJson(res, 200, next);
+      } catch (e) {
+        return mapDomainError(res, e);
+      }
+    }
+    if ((m = pathname.match(/^\/api\/amendments\/([^/]+)$/)) && req.method === 'GET') {
+      if (!amendments) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '变更单存储未接线' });
+      if (!requireLevel(res, req, 0)) return;
+      const am = await amendments.get(m[1]);
+      if (!am) return sendJson(res, 404, null, { code: 'NOT_FOUND', message: '变更单不存在' });
+      const parent = await store.get(am.parent_contract_id);
+      const comparison = Object.keys(am.changes).map((f) => ({ field: f, from: parent ? parent[f] : null, to: am.changes[f] }));
+      return sendJson(res, 200, { ...am, comparison });
     }
 
     sendJson(res, 404, null, { code: 'NOT_FOUND', message: `无此接口 ${req.method} ${pathname}` });

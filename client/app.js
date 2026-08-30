@@ -8,6 +8,8 @@ let role = 'editor';
 let userId = 'u_1';
 let counterparties = [];
 let selected = null;
+let cpEditingId = null; // 相对方编辑态（null=新建）
+let amSelectedId = null; // 当前打开的变更单
 
 async function api(path, { method = 'GET', body } = {}) {
   const opts = { method, headers: { 'X-User-Role': role, 'X-User-Id': userId } };
@@ -86,13 +88,143 @@ async function loadApproval() {
 }
 
 function applyIdentity() {
+  document.body.dataset.role = role; // CSS 按角色隐隐藏（只读），服务端仍 403 兜底
   refreshList().catch((e) => flash(e.message));
   if (selected) loadDetail(selected.id).catch((e) => flash(e.message));
 }
 
 async function loadCounterparties() {
   counterparties = await api('/api/counterparties');
-  $('cp-select').innerHTML = counterparties.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  // 选择器提示 name + 信用代码 + 风险；管理页表格渲染。
+  $('cp-select').innerHTML = counterparties.map((c) =>
+    `<option value="${c.id}">${esc(c.name)}${c.credit_code ? ` · ${esc(c.credit_code)}` : ''}${c.risk_rating ? `（风险 ${esc(c.risk_rating)}）` : ''}</option>`).join('');
+  renderCounterparties();
+  renderAmendmentParent();
+}
+
+function renderCounterparties() {
+  $('cp-list').innerHTML = counterparties.length
+    ? counterparties.map((c) => `<tr data-id="${c.id}">
+        <td>${esc(c.name)}</td>
+        <td>${esc(c.credit_code || '—')}</td>
+        <td>${esc(c.risk_rating || 'C')}</td>
+        <td>${esc(c.contact || '—')}</td>
+        <td class="row-actions">
+          <button type="button" class="btn" data-act="edit">编辑</button>
+          <button type="button" class="btn danger" data-act="del">删除</button>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="5">暂无相对方</td></tr>';
+  document.querySelectorAll('#cp-list tr[data-id]').forEach((tr) => {
+    tr.querySelector('[data-act="edit"]').addEventListener('click', () => startEditCp(tr.dataset.id));
+    tr.querySelector('[data-act="del"]').addEventListener('click', () => deleteCp(tr.dataset.id));
+  });
+}
+
+function startEditCp(id) {
+  const c = counterparties.find((x) => x.id === id);
+  if (!c) return;
+  cpEditingId = id;
+  const f = $('cp-form');
+  f.name.value = c.name;
+  f.credit_code.value = c.credit_code || '';
+  f.risk_rating.value = c.risk_rating || 'C';
+  f.contact.value = c.contact || '';
+  $('cp-submit').textContent = '保存修改';
+  hideCpError();
+}
+
+async function deleteCp(id) {
+  if (!window.confirm('删除该相对方？')) return;
+  try {
+    await api(`/api/counterparties/${id}`, { method: 'DELETE' });
+    await loadCounterparties();
+  } catch (err) { showCpError(err.message); }
+}
+
+function showCpError(m) { const el = $('cp-error'); el.textContent = m; el.hidden = false; }
+function hideCpError() { $('cp-error').hidden = true; }
+
+async function submitCp(e) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const body = {
+    name: f.get('name'),
+    credit_code: f.get('credit_code'),
+    risk_rating: f.get('risk_rating'),
+    contact: f.get('contact') || undefined,
+  };
+  try {
+    if (cpEditingId) { await api(`/api/counterparties/${cpEditingId}`, { method: 'PATCH', body }); cpEditingId = null; $('cp-submit').textContent = '新增相对方'; }
+    else { await api('/api/counterparties', { method: 'POST', body }); }
+    e.target.reset();
+    hideCpError();
+    await loadCounterparties();
+  } catch (err) { showCpError(err.message); } // 409 重复信用代码在此呈现
+}
+
+// —— 变更单：列表 + 详情对照 + 提交/审批/应用（只展示，服务端强校验兜底）。——
+async function renderAmendmentParent() {
+  const parents = await api('/api/contracts').catch(() => []); // 列表已默认收敛 superseded
+  $('am-parent').innerHTML = parents.filter((c) => c.status === 'active')
+    .map((c) => `<option value="${c.id}">v${c.version ?? 1} · ${esc(c.title)}</option>`).join('');
+}
+
+async function refreshAmendments() {
+  amendments = await api('/api/amendments');
+  $('am-list').innerHTML = amendments.length
+    ? amendments.map((a) => `<tr data-id="${a.id}">
+        <td>${esc((a.reason || '').slice(0, 14))}</td>
+        <td>${esc(a.parent_contract_id)}</td>
+        <td>${badge(a.status)}</td>
+        <td><button type="button" class="btn" data-act="det">详情</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="4">暂无变更单</td></tr>';
+  document.querySelectorAll('#am-list tr[data-id]').forEach((tr) => {
+    tr.querySelector('[data-act="det"]').addEventListener('click', () => loadAmDetail(tr.dataset.id).catch((e) => flash(e.message)));
+  });
+}
+
+async function submitAm(e) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const field = f.get('field');
+  let value = f.get('value');
+  if (field === 'amount') value = Math.round(Number(value || 0) * 100); // 元→分
+  const parent_contract_id = f.get('parent_contract_id');
+  if (!parent_contract_id) { flash('请先选择父合同'); return; }
+  try {
+    await api('/api/amendments', { method: 'POST', body: { parent_contract_id, reason: f.get('reason'), changes: { [field]: value } } });
+    e.target.reset();
+    await refreshAmendments();
+  } catch (err) { flash(err.message); }
+}
+
+async function loadAmDetail(id) {
+  const a = await api(`/api/amendments/${id}`);
+  amSelectedId = id;
+  $('am-detail').hidden = false;
+  const fmt = (d, v) => (d === 'amount' ? money(v) : v == null ? '—' : esc(v));
+  $('am-comparison').innerHTML = (a.comparison || []).length
+    ? a.comparison.map((d) => `<dt>${esc(d.field)}</dt><dd>${fmt(d.field, d.from)} → ${fmt(d.field, d.to)}</dd>`).join('')
+    : '<dt>—</dt><dd>无变更</dd>';
+  // 仅展示对应的下一步动作；角色/合法性由服务端判定
+  $('am-submit').hidden = a.status !== 'draft';
+  $('am-approve').hidden = a.status !== 'in_review' || role === 'viewer';
+  $('am-reject').hidden = a.status !== 'in_review' || role === 'viewer';
+  $('am-apply').hidden = a.status !== 'approved' || role === 'viewer';
+}
+
+async function amAction(action) {
+  if (!amSelectedId) return;
+  const body = (action === 'approve' || action === 'reject') ? { comment: (window.prompt('审批意见') || '').trim() } : undefined;
+  try {
+    await api(`/api/amendments/${amSelectedId}/${action}`, { method: 'POST', body });
+    if (action === 'apply') flash('已应用，生成继任合同');
+    await refreshList();
+    await refreshAmendments();
+    if (amSelectedId) loadAmDetail(amSelectedId).catch(() => {});
+  } catch (err) { flash(err.message); }
 }
 
 async function init() {
@@ -163,8 +295,16 @@ async function init() {
     } catch (err) { flash(err.message); }
   });
 
+  $('cp-form').addEventListener('submit', (e) => submitCp(e).catch(() => {}));
+  $('am-form').addEventListener('submit', (e) => submitAm(e).catch((err) => flash(err.message)));
+  $('am-submit').addEventListener('click', () => amAction('submit'));
+  $('am-approve').addEventListener('click', () => amAction('approve'));
+  $('am-reject').addEventListener('click', () => amAction('reject'));
+  $('am-apply').addEventListener('click', () => amAction('apply'));
+
   await loadCounterparties();
   await refreshList();
+  await refreshAmendments();
 }
 
 init().catch((e) => flash(e.message));
